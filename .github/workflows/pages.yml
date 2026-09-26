@@ -23,6 +23,11 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check startup recovery and shipped models
+        run: node --test tests/*.test.mjs
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload static game
