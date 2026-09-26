@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {loadTexture} from './asset-loading.js';
 
 // Keep render meshes and collision in exactly the same world coordinates.
 export function prepareTrack(root,scene){
@@ -24,12 +25,30 @@ export function prepareTrack(root,scene){
  return {renderMeshes,correctedTriangles};
 }
 
-export async function loadSurfaceMaps(renderer){const loader=new THREE.TextureLoader(),maps={};for(const kind of ['asphalt','rock']){maps[kind]=await Promise.all(['color','normal','roughness'].map(type=>loader.loadAsync('./assets/'+kind+'-'+type+'.jpg')));maps[kind].forEach(t=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});maps[kind][0].colorSpace=THREE.SRGBColorSpace;}return maps;}
+export async function loadSurfaceMaps(renderer){
+ const loader=new THREE.TextureLoader(),maps={};
+ await Promise.all(['asphalt','rock'].map(async kind=>{
+  const results=await Promise.allSettled(['color','normal','roughness'].map(type=>loadTexture(loader,'./assets/'+kind+'-'+type+'.jpg')));
+  const failed=results.filter(result=>result.status==='rejected');
+  if(failed.length){
+   for(const result of results)if(result.status==='fulfilled')result.value.dispose();
+   maps[kind]=null;
+   console.warn('Surface detail unavailable, keeping base material',kind,...failed.map(result=>result.reason.message));
+   return;
+  }
+  maps[kind]=results.map(result=>result.value);
+  maps[kind].forEach(t=>{t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());});
+  maps[kind][0].colorSpace=THREE.SRGBColorSpace;
+ }));
+ return maps;
+}
 
 export function detailMaterial(mat,maps){
  const road=mat.name==='WetRoad',set=road?maps.asphalt:maps.rock;
  mat.side=THREE.DoubleSide;mat.roughness=road?.25:.8;mat.metalness=road?.08:0;mat.envMapIntensity=road?.55:.25;
  if(!road){mat.alphaTest=.42;mat.transparent=false;}
+ // Detail textures are optional; preserve the track's embedded atlas on failure.
+ if(!set)return;
  mat.onBeforeCompile=shader=>{
   shader.uniforms.detailColor={value:set[0]};shader.uniforms.detailNormal={value:set[1]};shader.uniforms.detailRough={value:set[2]};
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 stormWorld; varying vec3 stormNW;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nstormWorld=(modelMatrix*vec4(transformed,1.)).xyz;stormNW=normalize(mat3(modelMatrix)*objectNormal);');

@@ -70,15 +70,7 @@
         "verified": "Positions fitted to source steering, dashboard and windshield bounds; visual gameplay QA required."
       },
       "sourceSha256": "4853646dc3c73bf3e1d66f4d87f843cf7eedafd99e2351251429379e43bc97fc",
-      "mediumParts": [
-        "Porsche992-medium.part-001.bin",
-        "Porsche992-medium.part-002.bin",
-        "Porsche992-medium.part-003.bin",
-        "Porsche992-medium.part-004.bin",
-        "Porsche992-medium.part-005.bin",
-        "Porsche992-medium.part-006.bin",
-        "Porsche992-medium.part-007.bin"
-      ]
+      "mediumParts": []
     },
     "Mercedes2005": {
       "name": "Mercedes C-Class DTM 2005",
@@ -222,15 +214,7 @@
         "verified": "Positions fitted to source steering, dashboard and windshield bounds; visual gameplay QA required."
       },
       "sourceSha256": "cefe189f4da0a5cdec2d3404c95dfc4655b9a484044e677037dad9edcbbd6772",
-      "mediumParts": [
-        "Mercedes2018-medium.part-001.bin",
-        "Mercedes2018-medium.part-002.bin",
-        "Mercedes2018-medium.part-003.bin",
-        "Mercedes2018-medium.part-004.bin",
-        "Mercedes2018-medium.part-005.bin",
-        "Mercedes2018-medium.part-006.bin",
-        "Mercedes2018-medium.part-007.bin"
-      ]
+      "mediumParts": []
     },
     "MercedesGT3": {
       "name": "Mercedes-AMG GT3",
@@ -296,21 +280,7 @@
         "verified": "Positions fitted to source steering, dashboard and windshield bounds; visual gameplay QA required."
       },
       "sourceSha256": "ef281e3a10b33f6236fb189a5b53b41ca744d27afdc071ae79bb663e5d4719e7",
-      "mediumParts": [
-        "MercedesGT3-medium.part-001.bin",
-        "MercedesGT3-medium.part-002.bin",
-        "MercedesGT3-medium.part-003.bin",
-        "MercedesGT3-medium.part-004.bin",
-        "MercedesGT3-medium.part-005.bin",
-        "MercedesGT3-medium.part-006.bin",
-        "MercedesGT3-medium.part-007.bin",
-        "MercedesGT3-medium.part-008.bin",
-        "MercedesGT3-medium.part-009.bin",
-        "MercedesGT3-medium.part-010.bin",
-        "MercedesGT3-medium.part-011.bin",
-        "MercedesGT3-medium.part-012.bin",
-        "MercedesGT3-medium.part-013.bin"
-      ]
+      "mediumParts": []
     }
   }
 }
