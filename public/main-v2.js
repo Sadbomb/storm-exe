@@ -8,6 +8,7 @@ import {RaceRoute,RivalRace,CAR_IDS} from './ai.js';
 import {prepareTrack,loadSurfaceMaps,detailMaterial,AdaptiveQuality} from './render-world.js';
 import {WeatherFX,CockpitGlass,VehicleVisual} from './effects.js';
 import {StormAudio} from './audio.js';
+import {describeError} from './asset-loading.js';
 
 const $=id=>document.getElementById(id),canvas=$('game');
 const ids=CAR_IDS,names=['992 GT3 R','W203 DTM','C-COUPE DTM','AMG GT3'];
@@ -19,7 +20,7 @@ let savedSafe,cameraSnap=true,lighting=[],miniBounds,initialView=0,renderMeshes=
 const loader=new GLTFLoader(),v=new THREE.Vector3(),targetCamera=new THREE.Vector3(),targetLook=new THREE.Vector3(),cameraLook=new THREE.Vector3(),normalUp=new THREE.Vector3(0,1,0),eye=new THREE.Vector3();
 const cameraNames=['追尾镜头','驾驶舱','引擎盖'];
 function setStatus(s,p){$('loading').textContent=s;if(p!==undefined)$('load-bar').style.width=p+'%';}
-function fail(e){console.error(e);$('error').textContent='启动遇到问题：'+(e?.message||String(e))+'。请重新载入；若仍失败，保留此提示。';$('fatal').hidden=false;mode='error';}
+function fail(e){console.error(e);$('error').textContent='启动遇到问题：'+describeError(e)+'。请重新载入；若仍失败，保留此提示。';$('fatal').hidden=false;mode='error';}
 window.addEventListener('error',e=>{if(e.message)fail(new Error(e.message));});window.addEventListener('unhandledrejection',e=>fail(e.reason));
 async function json(path){const r=await fetch('./'+path);if(!r.ok)throw new Error(path+' 载入失败 ('+r.status+')');return r.json();}
 async function loadPlayerModel(id){
