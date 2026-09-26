@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#081016"><title>STORM.EXE — Rocky Pass</title><link rel="icon" href="data:,"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="v2.css"><script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/examples/jsm/"}}</script></head>
+<body>
+<canvas id="game" tabindex="0" aria-label="赛车画面，W 加速，S 刹车倒车，A D 转向"></canvas><div class="vignette"></div>
+<header><a class="brand" href="#" aria-label="STORM.EXE">STORM<span>.EXE</span><i>／</i></a><div class="edition">ROCKY PASS <span>驾驶试玩 · WEB 02.2</span></div><div class="weather"><b>●</b> HEAVY RAIN <span>湿地 / 夜间</span></div></header>
+<main id="menu" class="panel">
+ <div class="eyebrow"><span class="line"></span> NO CLEAR SKIES. JUST YOU.</div>
+ <h1>CHASE<br>THE <em>STORM.</em></h1>
+ <p class="intro">越过山口。穿透暴雨。<br>在 Rocky Pass 的湿地弯道里，找到你的节奏。</p>
+ <div class="track-info"><div><b>8.72<span> KM</span></b><small>原始赛道路程</small></div><div><b>01<span> LAP</span></b><small>四车雨夜竞速</small></div><div><b>03<span> RIVALS</span></b><small>强劲 AI 对手</small></div></div>
+ <label class="select-title" for="car">选择你的赛车 <span>01 — 04</span></label>
+ <select id="car"><option value="Porsche992">2024 PORSCHE 992 GT3 R</option><option value="Mercedes2005">2005 MERCEDES W203 DTM</option><option value="Mercedes2018">2018 MERCEDES C-COUPE DTM</option><option value="MercedesGT3">MERCEDES-AMG GT3 · RED BULL</option></select>
+ <div class="options camera-options"><label for="camera-mode">驾驶视角 <select id="camera-mode"><option value="0">追尾镜头</option><option value="1">驾驶舱 · 第一视角</option><option value="2">引擎盖</option></select></label></div><div class="options"><label>画质 <select id="quality"><option value="balanced">流畅</option><option value="high">精细</option></select></label><button id="sound" aria-pressed="true">声音 开</button></div>
+ <button id="start" class="primary" disabled><span id="start-label">正在载入赛道…</span><span>↗</span></button>
+ <button id="demo-start" class="demo-start" disabled>观摩 AI 跑一圈</button>
+ <div class="load-track"><i id="load-bar"></i></div><p id="loading" role="status">准备赛车与赛道素材</p>
+ <div class="keys"><span><kbd>W A S D</kbd> 驾驶</span><span><kbd>S / ↓</kbd> 刹车</span><span><kbd>SPACE</kbd> 手刹</span><span><kbd>R</kbd> 回到道路</span></div>
+ <p class="disclosure">WEB 02.2 · 实景碰撞 / 座舱 / AI 竞速<br>浏览器街机物理 · Unreal 工程独立保留</p>
+</main>
+<aside id="hud" hidden>
+ <div class="race-head"><div><small>POSITION</small><b id="position">4 <span>/ 4</span></b></div><div><small>LAP</small><b>01 <span>/ 01</span></b></div><div><small>TIME</small><b id="timer">00:00.000</b></div><div><small>CHECKPOINT</small><b id="gate">00 <span>/ 44</span></b></div></div>
+ <ol id="leaderboard" aria-label="实时排名"></ol><div id="corner-hint"></div><div id="demo-label" hidden>AI 示范驾驶 · 可切换视角 / 暂停返回选车</div><div class="nav"><canvas id="minimap" width="220" height="220" aria-label="赛道小地图"></canvas><span>ROCKY PASS / <b id="progress">0%</b></span></div>
+ <div class="speedo"><div class="rev"><i id="rev"></i></div><div class="speed-line"><span id="gear">N</span><b id="speed">000</b></div><div class="speed-meta"><span id="car-name">992 GT3 R</span><strong>KM/H</strong></div><div class="traction">● <span id="surface">WET ASPHALT</span><span id="fps">— FPS</span></div></div>
+ <div class="hint"><kbd>W A S D</kbd> 驾驶 <kbd>S</kbd> 刹车 <kbd>空格</kbd> 手刹 <kbd>R</kbd> 脱困 <kbd>C</kbd> 视角 <kbd>V</kbd> 雨刷 <kbd>ESC</kbd> 暂停</div>
+ <div class="touch"><button data-key="KeyA" aria-label="向左">◀</button><button data-key="KeyD" aria-label="向右">▶</button><button data-key="KeyS" aria-label="刹车">刹车</button><button data-key="KeyW" aria-label="加速">加速</button></div>
+ <button id="camera-btn" aria-label="切换驾驶视角">驾驶舱 [C]</button><button id="fullscreen-btn" aria-label="全屏">⛶</button><button id="pause-btn" aria-label="暂停比赛">Ⅱ</button>
+</aside>
+<canvas id="glass-fx" hidden aria-hidden="true"></canvas><div id="callout" aria-live="polite"></div>
+<div id="pause" class="modal" hidden><div><small>TAKE A BREATH</small><h2>暂停 / PAUSED</h2><p>准备好了，就继续穿过这场雨。</p><button id="resume" class="primary">继续驾驶 →</button><button id="restart">重新开始</button><button id="garage">返回选车</button></div></div>
+<div id="finish" class="modal" hidden><div><small>YOU MADE IT THROUGH.</small><h2>冲出风暴。</h2><p>ROCKY PASS · 一圈完成</p><p id="finish-place"></p><strong id="finish-time">00:00.000</strong><p id="best"></p><button id="again" class="primary">再跑一圈 ↗</button><button id="finish-garage">返回选车</button></div></div>
+<div id="fatal" class="modal" hidden><div><h2>暂时无法启动</h2><p id="error"></p><button onclick="location.reload()" class="primary">重新载入</button></div></div>
+<script type="module" src="main-v2.js"></script>
+</body></html>
