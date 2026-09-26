@@ -2,6 +2,8 @@
 
 A browser racing demo with four selectable cars, three AI rivals, a complete Rocky Pass lap, cockpit camera and heavy rain. This source is the tested WEB 02.2 release.
 
+**Play online:** https://sadbomb.github.io/storm-exe/
+
 ## Controls
 
 W / ↑ accelerate · S / ↓ brake, then reverse · A / D steer · Space handbrake · C camera · V wipers · R recover · Esc pause.
@@ -22,10 +24,9 @@ embedded base atlas and the game starts without that detail layer. Console
 warnings identify the failed files; fatal errors retain readable diagnostics.
 Required track, collision and vehicle data still fail visibly when unavailable.
 
-Only complete medium-model chunk sets are listed in `mediumParts`. The current
-release includes a complete Mercedes2005 medium model; Porsche992,
-Mercedes2018 and MercedesGT3 use their bundled LOD models directly. Restore their
-`mediumParts` entries only after all chunks have been uploaded and validated.
+All four complete high-detail model chunk sets are listed in `mediumParts` and
+verified by the publishing tests. If a chunk is temporarily unavailable,
+the game falls back to that car's bundled race model.
 
 ## Verification
 
