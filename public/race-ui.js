@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import {clamp,timeText,getCarTuning} from './driving.js';
-import {SettingsStore,SessionTelemetry,ReplayBuffer,readGamepad} from './race-systems.js';
+import {clamp,timeText,getCarTuning} from './driving.js?v=3.1';
+import {SettingsStore,SessionTelemetry,ReplayBuffer,readGamepad} from './race-systems.js?v=3.1';
 const $=id=>document.getElementById(id);
 const names={Porsche992:'992 GT3 R',Mercedes2005:'W203 DTM',Mercedes2018:'C-COUPÉ DTM',MercedesGT3:'AMG GT3'};
 const percent=x=>Math.round(x*100)+'%';

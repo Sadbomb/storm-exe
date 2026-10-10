@@ -1,6 +1,6 @@
 // Racing audio: the supplied exterior recordings are one-shot event sounds.
 // Engine RPM comes from a separate harmonic synthesizer, never a pass-by loop.
-import {getCarTuning} from './vehicle-tuning.js';
+import {getCarTuning} from './vehicle-tuning.js?v=3.1';
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const finite=(n,fallback=0)=>Number.isFinite(n)?n:fallback;
 const RATIOS=[3.05,2.15,1.62,1.29,1.05,.88];

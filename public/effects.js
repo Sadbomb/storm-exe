@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {clamp,steeringLock} from './driving.js';
+import {clamp,steeringLock} from './driving.js?v=3.1';
 const finite=(value,fallback=0)=>Number.isFinite(value)?value:fallback;
 
 function softTexture(){const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'rgba(210,230,245,.8)');g.addColorStop(.25,'rgba(168,198,222,.4)');g.addColorStop(1,'rgba(120,170,210,0)');x.fillStyle=g;x.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);}

@@ -1,6 +1,6 @@
-import {CAR_DIMENSIONS} from './collision.js';
-import {getCarTuning,ASSIST_MODES} from './vehicle-tuning.js';
-export {getCarTuning,ASSIST_MODES} from './vehicle-tuning.js';
+import {CAR_DIMENSIONS} from './collision.js?v=3.1';
+import {getCarTuning,ASSIST_MODES} from './vehicle-tuning.js?v=3.1';
+export {getCarTuning,ASSIST_MODES} from './vehicle-tuning.js?v=3.1';
 export const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export const angle=x=>Math.atan2(Math.sin(x),Math.cos(x));
 // Representative dry-road service brake deceleration (m/s²), also used by AI.

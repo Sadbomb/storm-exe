@@ -1,4 +1,4 @@
-import {clamp,angle,makeCar,drive,Lap,steeringLock} from './driving.js';
+import {clamp,angle,makeCar,drive,Lap,steeringLock} from './driving.js?v=3.1';
 
 export const CAR_IDS=['Porsche992','Mercedes2005','Mercedes2018','MercedesGT3'];
 // Difficulty changes the driver's decisions, never the car's physics or position.

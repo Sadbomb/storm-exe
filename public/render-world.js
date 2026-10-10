@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {loadTexture} from './asset-loading.js';
+import {loadTexture} from './asset-loading.js?v=3.1';
 
 // Keep render meshes and collision in exactly the same world coordinates.
 export function prepareTrack(root,scene){

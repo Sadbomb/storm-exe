@@ -1,15 +1,15 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
-import {RoadSurface,makeCar,drive,Lap,clamp,timeText} from './driving.js';
-import {CollisionWorld,resolveCars} from './collision.js';
-import {gateCollisionTriangles} from './gate-collision.js';
-import {RaceRoute,RivalRace,CAR_IDS} from './ai.js';
-import {prepareTrack,loadSurfaceMaps,detailMaterial,AdaptiveQuality} from './render-world.js';
-import {WeatherFX,CockpitGlass,VehicleVisual} from './effects.js';
-import {StormAudio} from './audio.js';
-import {describeError} from './asset-loading.js';
-import {RaceExperience} from './race-ui.js';
+import {RoadSurface,makeCar,drive,Lap,clamp,timeText} from './driving.js?v=3.1';
+import {CollisionWorld,resolveCars} from './collision.js?v=3.1';
+import {gateCollisionTriangles} from './gate-collision.js?v=3.1';
+import {RaceRoute,RivalRace,CAR_IDS} from './ai.js?v=3.1';
+import {prepareTrack,loadSurfaceMaps,detailMaterial,AdaptiveQuality} from './render-world.js?v=3.1';
+import {WeatherFX,CockpitGlass,VehicleVisual} from './effects.js?v=3.1';
+import {StormAudio} from './audio.js?v=3.1';
+import {describeError} from './asset-loading.js?v=3.1';
+import {RaceExperience} from './race-ui.js?v=3.1';
 
 const $=id=>document.getElementById(id),canvas=$('game');
 const ids=CAR_IDS,names=['992 GT3 R','W203 DTM','C-COUPE DTM','AMG GT3'];
