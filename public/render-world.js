@@ -25,10 +25,10 @@ export function prepareTrack(root,scene){
  return {renderMeshes,correctedTriangles};
 }
 
-export async function loadSurfaceMaps(renderer){
+export async function loadSurfaceMaps(renderer,options){
  const loader=new THREE.TextureLoader(),maps={};
  await Promise.all(['asphalt','rock'].map(async kind=>{
-  const results=await Promise.allSettled(['color','normal','roughness'].map(type=>loadTexture(loader,'./assets/'+kind+'-'+type+'.jpg')));
+  const results=await Promise.allSettled(['color','normal','roughness'].map(type=>loadTexture(loader,'./assets/'+kind+'-'+type+'.jpg',options)));
   const failed=results.filter(result=>result.status==='rejected');
   if(failed.length){
    for(const result of results)if(result.status==='fulfilled')result.value.dispose();

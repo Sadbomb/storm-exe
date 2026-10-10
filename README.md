@@ -24,9 +24,10 @@ The GitHub Actions workflow publishes the exact `public` directory to GitHub Pag
 
 ## Startup resilience
 
-Surface detail images are optional: a failed request is retried once, with an
-8-second limit per attempt. If a texture group still fails, the track keeps its
-embedded base atlas and the game starts without that detail layer. Console
+Surface detail images stream in the background after the cars are ready.
+A failed request is retried once, with a 45-second limit per attempt. The start
+button never waits for these optional images; late detail is applied automatically.
+If a texture group still fails, the track keeps its embedded base atlas. Console
 warnings identify the failed files; fatal errors retain readable diagnostics.
 Required track, collision and vehicle data still fail visibly when unavailable.
 
