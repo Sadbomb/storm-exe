@@ -1,33 +1,63 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#081016"><title>STORM.EXE — Rocky Pass</title><link rel="icon" href="data:,"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="v2.css"><script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/examples/jsm/"}}</script></head>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#091217">
+<title>STORM.EXE — Club Racing 03</title><link rel="icon" href="data:,"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="v2.css"><link rel="stylesheet" href="v3.css">
+<script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
+</head>
 <body>
 <canvas id="game" tabindex="0" aria-label="赛车画面，W 加速，S 刹车倒车，A D 转向"></canvas><div class="vignette"></div>
-<header><a class="brand" href="#" aria-label="STORM.EXE">STORM<span>.EXE</span><i>／</i></a><div class="edition">ROCKY PASS <span>驾驶试玩 · WEB 02.2</span></div><div class="weather"><b>●</b> HEAVY RAIN <span>湿地 / 夜间</span></div></header>
+<header><a class="brand" href="#" aria-label="STORM.EXE">STORM<span>.EXE</span><i>／</i></a><div class="edition">CLUB RACING <span>V03 · ROCKY PASS</span></div><div class="weather"><b>●</b> <span id="weather-title">WET SESSION</span><small>山路 / 8.72 KM / 44 CHECKPOINTS</small></div></header>
 <main id="menu" class="panel">
- <div class="eyebrow"><span class="line"></span> NO CLEAR SKIES. JUST YOU.</div>
- <h1>CHASE<br>THE <em>STORM.</em></h1>
- <p class="intro">越过山口。穿透暴雨。<br>在 Rocky Pass 的湿地弯道里，找到你的节奏。</p>
- <div class="track-info"><div><b>8.72<span> KM</span></b><small>原始赛道路程</small></div><div><b>01<span> LAP</span></b><small>四车雨夜竞速</small></div><div><b>03<span> RIVALS</span></b><small>强劲 AI 对手</small></div></div>
- <label class="select-title" for="car">选择你的赛车 <span>01 — 04</span></label>
- <select id="car"><option value="Porsche992">2024 PORSCHE 992 GT3 R</option><option value="Mercedes2005">2005 MERCEDES W203 DTM</option><option value="Mercedes2018">2018 MERCEDES C-COUPE DTM</option><option value="MercedesGT3">MERCEDES-AMG GT3 · RED BULL</option></select>
- <div class="options camera-options"><label for="camera-mode">驾驶视角 <select id="camera-mode"><option value="0">追尾镜头</option><option value="1">驾驶舱 · 第一视角</option><option value="2">引擎盖</option></select></label></div><div class="options"><label>画质 <select id="quality"><option value="balanced">流畅</option><option value="high">精细</option></select></label><button id="sound" aria-pressed="true">声音 开</button></div>
- <button id="start" class="primary" disabled><span id="start-label">正在载入赛道…</span><span>↗</span></button>
- <button id="demo-start" class="demo-start" disabled>观摩 AI 跑一圈</button>
- <div class="load-track"><i id="load-bar"></i></div><p id="loading" role="status">准备赛车与赛道素材</p>
- <div class="keys"><span><kbd>W A S D</kbd> 驾驶</span><span><kbd>S / ↓</kbd> 刹车</span><span><kbd>SPACE</kbd> 手刹</span><span><kbd>R</kbd> 回到道路</span></div>
- <p class="disclosure">WEB 02.2 · 实景碰撞 / 座舱 / AI 竞速<br>浏览器街机物理 · Unreal 工程独立保留</p>
+ <div class="eyebrow"><span class="line"></span> THE LIMIT IS A FEELING.</div>
+ <h1>CHASE THE<br><em>FEELING.</em></h1>
+ <p class="intro">刹车、入弯、给油。<br>在抓地的边缘，找到自己的节奏。</p>
+ <div class="session-strip"><span>ROCKY PASS</span><b>01 LAP</b><span id="device-label">键盘 · WASD / 方向键</span></div>
+ <nav class="garage-tabs" aria-label="车库设置"><button class="active" data-tab="session" aria-pressed="true">赛事</button><button data-tab="controls" aria-pressed="false">驾驶</button><button data-tab="display" aria-pressed="false">视听</button><button data-tab="records" aria-pressed="false">记录</button></nav>
+ <section data-panel="session">
+  <label class="select-title" for="car">你的赛车 <span id="car-index">01 / 04</span></label>
+  <select id="car"><option value="Porsche992">PORSCHE 992 GT3 R</option><option value="Mercedes2005">MERCEDES W203 DTM</option><option value="Mercedes2018">MERCEDES C-COUPE DTM</option><option value="MercedesGT3">MERCEDES-AMG GT3</option></select>
+  <p id="car-character" class="setting-note">精准入弯 · 后置引擎</p>
+  <div class="setting-grid"><label>赛事模式<select id="session-mode" data-setting="mode"><option value="race">四车竞速</option><option value="time-trial">个人计时赛</option></select></label><label>AI 难度<select id="difficulty" data-setting="difficulty"><option value="club">俱乐部</option><option value="pro">专业</option><option value="elite">精英</option></select></label></div>
+  <div class="setting-grid"><label>赛道条件<select id="wetness" data-setting="wetness"><option value="0">干地 · 黄昏</option><option value="0.4">小雨 · 湿地</option><option value="0.85">暴雨 · 夜间</option></select></label><label>车辆细节<select id="model-detail" data-setting="modelDetail"><option value="race">比赛模型 · 快速加载</option><option value="full">完整座舱 · 较大下载</option></select></label></div>
+  <label class="check"><input type="checkbox" data-setting="ghost" checked> 显示同条件最佳圈幽灵车</label>
+ </section>
+ <section data-panel="controls" hidden>
+  <label class="select-title" for="assist">驾驶辅助</label><select id="assist" data-setting="assist"><option value="approachable">轻松 · 稳定辅助更强</option><option value="sport">运动 · 易上手的拟真</option><option value="expert">专家 · 更少电子干预</option></select>
+  <p class="setting-note">收油让前轮回到抓地范围，再逐渐加速出弯。S 刹停后继续按住，才会倒车。</p>
+  <label class="range-label" for="sensitivity">转向灵敏度 <output id="sensitivity-value">1.00</output><input type="range" id="sensitivity" data-setting="sensitivity" min="0.6" max="1.4" step="0.05"></label>
+  <label class="range-label" for="deadzone">手柄死区 <output id="deadzone-value">12%</output><input type="range" id="deadzone" data-setting="deadzone" min="0.05" max="0.3" step="0.01"></label>
+  <label class="check"><input type="checkbox" data-setting="racingLine" checked> 动态行车参考线与刹车提示</label>
+  <div class="control-guide"><span><kbd>W / ↑</kbd> 油门</span><span><kbd>S / ↓</kbd> 刹车 / 倒车</span><span><kbd>A D / ← →</kbd> 转向</span><span><kbd>空格</kbd> 手刹</span><span><kbd>B</kbd> 向后看</span><span><kbd>R</kbd> 回到道路</span><span><kbd>C</kbd> 切换镜头</span><span><kbd>V</kbd> 雨刷</span></div>
+  <p class="setting-note">手柄：左摇杆转向 · RT 油门 · LT 刹车 · A 手刹 · Y 镜头 · X 复位 · B 向后看 · Start 暂停。连接后按任意键启用。</p>
+ </section>
+ <section data-panel="display" hidden>
+  <div class="setting-grid"><label>驾驶视角<select id="camera-mode" data-setting="camera"><option value="0">追尾镜头</option><option value="1">第一人称座舱</option><option value="2">引擎盖</option></select></label><label>画质<select id="quality" data-setting="quality"><option value="balanced">自适应 · 优先流畅</option><option value="high">精细 · 更高清晰度</option></select></label></div>
+  <label class="range-label" for="fov">追尾视野 <output id="fov-value">68°</output><input id="fov" type="range" data-setting="fov" min="55" max="85" step="1"></label>
+  <label class="range-label" for="motion">镜头动态 <output id="motion-value">50%</output><input id="motion" type="range" data-setting="motion" min="0" max="1" step="0.1"></label>
+  <label class="range-label" for="volume">总音量 <output id="volume-value">65%</output><input id="volume" type="range" data-setting="volume" min="0" max="1" step="0.05"></label>
+  <div class="check-pair"><label class="check"><input type="checkbox" data-setting="reducedMotion"> 减少动态与闪光</label><label class="check"><input type="checkbox" data-setting="compactHud"> 精简比赛 HUD</label></div><button id="sound" aria-pressed="true" class="small-button">声音 开</button>
+ </section>
+ <section data-panel="records" hidden><span class="micro">PERSONAL TELEMETRY</span><h2 class="record-time" id="record-time">— — : — —</h2><p id="record-context" class="setting-note">选择赛车、天气与辅助，查看同条件的本机最佳圈。</p><div id="record-sectors" class="sector-grid"></div><p class="setting-note">有效成绩需要完整通过全部检查点。碰撞影响干净圈评价；脱困或持续离开道路会使本圈失效。AI 示范不记录成绩。</p><button id="reset-settings" class="small-button">恢复默认设置</button></section>
+ <div class="launch-block"><button id="start" class="primary" disabled><span id="start-label">正在准备赛道</span><span>↗</span></button><button id="demo-start" class="demo-start" disabled>观摩 AI · 学习刹车点</button><div class="load-track"><i id="load-bar"></i></div><p id="loading" role="status">正在准备赛车与赛道素材</p></div>
+ <p class="disclosure">CLUB RACING 03 · 本机记录 · 无需账号<br>原创驾驶模型 / 固定步长物理 / 四款独立调校</p>
 </main>
+<aside id="car-stage" aria-label="赛车概览"><span class="micro">READY FOR YOUR NEXT LAP</span><h2 id="stage-name">992 GT3 R</h2><div class="stage-specs"><div><small>性格</small><b id="stage-character">精准</b></div><div><small>赛道</small><b>ROCKY PASS</b></div><div><small>条件</small><b id="stage-weather">WET</b></div></div><div class="stage-caption"><span class="square"></span> 四款赛车，不同的节奏。</div></aside>
 <aside id="hud" hidden>
- <div class="race-head"><div><small>POSITION</small><b id="position">4 <span>/ 4</span></b></div><div><small>LAP</small><b>01 <span>/ 01</span></b></div><div><small>TIME</small><b id="timer">00:00.000</b></div><div><small>CHECKPOINT</small><b id="gate">00 <span>/ 44</span></b></div></div>
- <ol id="leaderboard" aria-label="实时排名"></ol><div id="corner-hint"></div><div id="demo-label" hidden>AI 示范驾驶 · 可切换视角 / 暂停返回选车</div><div class="nav"><canvas id="minimap" width="220" height="220" aria-label="赛道小地图"></canvas><span>ROCKY PASS / <b id="progress">0%</b></span></div>
- <div class="speedo"><div class="rev"><i id="rev"></i></div><div class="speed-line"><span id="gear">N</span><b id="speed">000</b></div><div class="speed-meta"><span id="car-name">992 GT3 R</span><strong>KM/H</strong></div><div class="traction">● <span id="surface">WET ASPHALT</span><span id="fps">— FPS</span></div></div>
- <div class="hint"><kbd>W A S D</kbd> 驾驶 <kbd>S</kbd> 刹车 <kbd>空格</kbd> 手刹 <kbd>R</kbd> 脱困 <kbd>C</kbd> 视角 <kbd>V</kbd> 雨刷 <kbd>ESC</kbd> 暂停</div>
- <div class="touch"><button data-key="KeyA" aria-label="向左">◀</button><button data-key="KeyD" aria-label="向右">▶</button><button data-key="KeyS" aria-label="刹车">刹车</button><button data-key="KeyW" aria-label="加速">加速</button></div>
+ <div class="race-head"><div><small>POSITION</small><b id="position">4 <span>/ 4</span></b></div><div><small>SESSION</small><b id="session-label">RACE</b></div><div><small>LAP TIME</small><b id="timer">00:00.000</b></div><div class="checkpoint-stat"><small>CHECKPOINT</small><b id="gate">00 <span>/ 44</span></b></div></div>
+ <div class="timing-stack"><b id="delta">首次挑战</b><span id="lap-validity">CLEAN LAP</span><div id="sector-live" class="sector-grid"><span>S1 —</span><span>S2 —</span><span>S3 —</span></div></div>
+ <ol id="leaderboard" aria-label="实时排名"></ol><div id="corner-hint"></div><div id="coach"><span id="coach-action">寻找出弯点</span><b id="coach-speed">—</b><small>建议入弯 KM/H</small></div><div id="wrong-way" hidden>方向错误 · 安全调头</div>
+ <div id="demo-label" hidden>AI 示范 · 观察线路与刹车</div><div class="nav"><canvas id="minimap" width="220" height="220" aria-label="赛道小地图"></canvas><span>ROCKY PASS / <b id="progress">0%</b></span></div>
+ <canvas id="radar" width="160" height="160" aria-label="附近车辆雷达"></canvas>
+ <div class="speedo"><div class="rev"><i id="rev"></i></div><div class="rpm-line"><span id="rpm">IDLE</span><span id="assist-state">ABS · TC</span></div><div class="speed-line"><span id="gear">N</span><b id="speed">000</b></div><div class="speed-meta"><span id="car-name">992 GT3 R</span><strong>KM/H</strong></div><div class="pedals"><label>BRK<i><b id="brake-meter"></b></i></label><label>THR<i><b id="throttle-meter"></b></i></label><label class="steer-meter">STR<i><b id="steer-meter"></b></i></label></div><div class="traction"><span id="surface">WET ASPHALT</span><span id="fps">— FPS</span></div><div id="g-force">LAT 0.00 G · LONG 0.00 G</div></div>
+ <div class="hint"><kbd>WASD</kbd> 驾驶 <kbd>空格</kbd> 手刹 <kbd>B</kbd> 后视 <kbd>C</kbd> 镜头 <kbd>ESC</kbd> 暂停</div>
+ <div class="touch"><div id="touch-steer" role="slider" tabindex="0" aria-label="触屏转向" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><span>← 滑动转向 →</span><i></i></div><button data-key="KeyS" aria-label="刹车">刹车</button><button data-key="KeyW" aria-label="加速">油门</button></div>
  <button id="camera-btn" aria-label="切换驾驶视角">驾驶舱 [C]</button><button id="fullscreen-btn" aria-label="全屏">⛶</button><button id="pause-btn" aria-label="暂停比赛">Ⅱ</button>
 </aside>
-<canvas id="glass-fx" hidden aria-hidden="true"></canvas><div id="callout" aria-live="polite"></div>
-<div id="pause" class="modal" hidden><div><small>TAKE A BREATH</small><h2>暂停 / PAUSED</h2><p>准备好了，就继续穿过这场雨。</p><button id="resume" class="primary">继续驾驶 →</button><button id="restart">重新开始</button><button id="garage">返回选车</button></div></div>
-<div id="finish" class="modal" hidden><div><small>YOU MADE IT THROUGH.</small><h2>冲出风暴。</h2><p>ROCKY PASS · 一圈完成</p><p id="finish-place"></p><strong id="finish-time">00:00.000</strong><p id="best"></p><button id="again" class="primary">再跑一圈 ↗</button><button id="finish-garage">返回选车</button></div></div>
-<div id="fatal" class="modal" hidden><div><h2>暂时无法启动</h2><p id="error"></p><button onclick="location.reload()" class="primary">重新载入</button></div></div>
-<script type="module" src="main-v2.js"></script>
+<canvas id="glass-fx" hidden aria-hidden="true"></canvas><div id="start-lights" hidden aria-label="发车灯"><i></i><i></i><i></i><i></i><i></i></div><div id="callout" aria-live="polite"></div>
+<div id="pause" class="modal" hidden><div><small>TAKE A BREATH</small><h2>留一点余地。</h2><p>轻放刹车，松开方向，再加速。<br>下一次出弯，会更顺。</p><button id="resume" class="primary">继续驾驶 →</button><button id="replay-btn">回看最近 20 秒</button><button id="restart">重新开始</button><button id="garage">返回车库</button></div></div>
+<div id="replay-panel" hidden><div><span class="micro">INSTANT REPLAY · 回放不改变比赛</span><button id="replay-toggle">暂停回放</button><button id="replay-close">返回暂停界面</button></div><input id="replay-scrub" type="range" min="0" max="20" step="0.05" value="0" aria-label="回放时间"><span id="replay-time"></span></div>
+<div id="finish" class="modal" hidden><div><small>EVERY LAP TELLS A STORY.</small><h2>这一圈，有进步。</h2><p id="finish-place"></p><strong id="finish-time">00:00.000</strong><p id="best"></p><div id="result-stats" class="result-grid"></div><div id="result-sectors" class="sector-grid"></div><button id="again" class="primary">再跑一圈 ↗</button><button id="finish-garage">返回车库</button></div></div>
+<div id="fatal" class="modal" hidden><div><small>SESSION INTERRUPTED</small><h2>暂时无法启动</h2><p id="error"></p><button onclick="location.reload()" class="primary">重新载入</button></div></div>
+<script type="module" src="main-v2.js?v=3"></script>
 </body></html>

@@ -45,31 +45,43 @@ export async function loadSurfaceMaps(renderer){
 
 export function detailMaterial(mat,maps){
  const road=mat.name==='WetRoad',set=road?maps.asphalt:maps.rock;
- mat.side=THREE.DoubleSide;mat.roughness=road?.25:.8;mat.metalness=road?.08:0;mat.envMapIntensity=road?.55:.25;
+ mat.side=THREE.DoubleSide;mat.metalness=0;
+ // Share this exact uniform object with every compiled shader. Its setter also
+ // updates standard PBR properties, so missing optional maps retain live weather
+ // changes without replacing the embedded atlas or installing a detail shader.
+ if(!mat.userData.stormWetness){
+  let wetness=.75;const uniform={};
+  Object.defineProperty(uniform,'value',{enumerable:true,get:()=>wetness,set:value=>{
+   wetness=THREE.MathUtils.clamp(Number.isFinite(value)?value:.75,0,1);
+   mat.roughness=road?.88-.61*wetness:.87-.18*wetness;
+   mat.envMapIntensity=road?.25+.60*wetness:.20+.15*wetness;
+  }});mat.userData.stormWetness=uniform;
+ }
+ mat.userData.stormWetness.value=mat.userData.stormWetness.value;
  if(!road){mat.alphaTest=.42;mat.transparent=false;}
  // Detail textures are optional; preserve the track's embedded atlas on failure.
  if(!set)return;
  mat.onBeforeCompile=shader=>{
-  shader.uniforms.detailColor={value:set[0]};shader.uniforms.detailNormal={value:set[1]};shader.uniforms.detailRough={value:set[2]};
+  shader.uniforms.stormWetness=mat.userData.stormWetness;shader.uniforms.detailColor={value:set[0]};shader.uniforms.detailNormal={value:set[1]};shader.uniforms.detailRough={value:set[2]};
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 stormWorld; varying vec3 stormNW;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nstormWorld=(modelMatrix*vec4(transformed,1.)).xyz;stormNW=normalize(mat3(modelMatrix)*objectNormal);');
-  const common=`\nvarying vec3 stormWorld; varying vec3 stormNW; uniform sampler2D detailColor; uniform sampler2D detailNormal; uniform sampler2D detailRough;
+  const common=`\nvarying vec3 stormWorld; varying vec3 stormNW; uniform float stormWetness; uniform sampler2D detailColor; uniform sampler2D detailNormal; uniform sampler2D detailRough;
    float rect(vec2 p,vec4 r){return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w);}
    vec4 triSample(sampler2D tex){vec3 w=pow(abs(stormNW),vec3(4.));w/=max(.001,w.x+w.y+w.z);return texture2D(tex,stormWorld.yz*.16)*w.x+texture2D(tex,stormWorld.xz*.16)*w.y+texture2D(tex,stormWorld.xy*.16)*w.z;}
   `;
   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>'+common);
   if(road){
-   shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\nfloat paint=smoothstep(.65,.86,max(diffuseColor.r,max(diffuseColor.g,diffuseColor.b)));float finishMark=rect(vMapUv,vec4(.603,.096,.702,.28));paint=max(paint,finishMark);diffuseColor.rgb=mix(diffuseColor.rgb,texture2D(detailColor,stormWorld.xz*.23).rgb*.65,.97*(1.-paint));')
-    .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nvec2 grain=texture2D(detailNormal,stormWorld.xz*.23).xy*2.-1.;normal=normalize(normal+mat3(viewMatrix)*vec3(grain.x,0.,grain.y)*.22);')
-    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nfloat puddle=sin(stormWorld.x*.72+sin(stormWorld.z*.41))*sin(stormWorld.z*.65);roughnessFactor=.13+.18*smoothstep(-.3,.55,puddle)+.16*texture2D(detailRough,stormWorld.xz*.23).r;');
+   shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\nfloat paint=smoothstep(.65,.86,max(diffuseColor.r,max(diffuseColor.g,diffuseColor.b)));float finishMark=rect(vMapUv,vec4(.603,.096,.702,.28));paint=max(paint,finishMark);diffuseColor.rgb=mix(diffuseColor.rgb,texture2D(detailColor,stormWorld.xz*.23).rgb*mix(.84,.56,stormWetness),.97*(1.-paint));')
+    .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nvec2 grain=texture2D(detailNormal,stormWorld.xz*.23).xy*2.-1.;normal=normalize(normal+mat3(viewMatrix)*vec3(grain.x,0.,grain.y)*mix(.29,.11,stormWetness));')
+    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nfloat puddle=sin(stormWorld.x*.72+sin(stormWorld.z*.41))*sin(stormWorld.z*.65);float grainRough=texture2D(detailRough,stormWorld.xz*.23).r;float dryRough=.76+.18*grainRough;float wetRough=.10+.14*smoothstep(-.3,.55,puddle)+.12*grainRough;roughnessFactor=mix(dryRough,wetRough,smoothstep(.04,.95,stormWetness));');
   }else{
    // The original atlas mixes trees, signs, timber, rock and road. Only its rock regions receive detail.
    const mask='float rockMask=clamp(rect(vMapUv,vec4(.427,0.,.501,.28))+rect(vMapUv,vec4(.288,.476,.598,.568))+rect(vMapUv,vec4(.29,.384,.355,.475))+rect(vMapUv,vec4(.881,0.,.953,.843))+rect(vMapUv,vec4(0.,.852,.475,.913)),0.,1.);';
-   shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n'+mask+'diffuseColor.rgb=mix(diffuseColor.rgb,triSample(detailColor).rgb*.6,rockMask*.70);')
+   shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\n'+mask+'diffuseColor.rgb=mix(diffuseColor.rgb,triSample(detailColor).rgb*mix(.68,.51,stormWetness),rockMask*.70);')
     .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nvec3 rdetail=triSample(detailNormal).xyz*2.-1.;normal=normalize(normal+mat3(viewMatrix)*vec3(rdetail.x,rdetail.y,rdetail.x)*.17*rockMask);')
-    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.47+.4*triSample(detailRough).r,rockMask);');
+    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nfloat rockRough=triSample(detailRough).r;roughnessFactor=mix(roughnessFactor,mix(.67+.30*rockRough,.44+.32*rockRough,stormWetness),rockMask);');
   }
  };
- mat.customProgramCacheKey=()=>road?'storm-road-v2':'storm-rock-v2';
+ mat.customProgramCacheKey=()=>road?'storm-road-v3-weather':'storm-rock-v3-weather';
 }
 
 export class AdaptiveQuality {

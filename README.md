@@ -1,12 +1,18 @@
 # STORM.EXE — Rocky Pass
 
-A browser racing demo with four selectable cars, three AI rivals, a complete Rocky Pass lap, cockpit camera and heavy rain. This source is the tested WEB 02.2 release.
+Club Racing 03: a browser racing game with four individually tuned cars, progressive tyre physics, three levels of driver assistance and AI, dry/rain presets, time attack, personal best ghosts, sector timing, and instant replay.
+
+[中文更新说明：驾驶物理重构与另外 30 项改进](docs/UPDATE-V3.md)
 
 **Play online:** https://sadbomb.github.io/storm-exe/
 
 ## Controls
 
-W / ↑ accelerate · S / ↓ brake, then reverse · A / D steer · Space handbrake · C camera · V wipers · R recover · Esc pause.
+W / ↑ accelerate · S / ↓ brake, then reverse · A / D steer · Space handbrake · B look back · C camera · V wipers · R recover · Esc pause.
+
+Standard gamepad: left stick steer, RT throttle, LT brake, A handbrake, B look back, X recover, Y camera, Start pause. Mobile uses a sliding steering control and touch pedals.
+
+Pause to replay the last 20 seconds. Select driving assistance, steering sensitivity, weather, AI difficulty, camera comfort, sound volume and HUD options in the garage. Settings and condition-specific best laps stay on this browser. Vehicle parameters are gameplay calibrations, not manufacturer specifications.
 
 ## Local preview
 
@@ -24,7 +30,7 @@ embedded base atlas and the game starts without that detail layer. Console
 warnings identify the failed files; fatal errors retain readable diagnostics.
 Required track, collision and vehicle data still fail visibly when unavailable.
 
-All four complete high-detail model chunk sets are listed in `mediumParts` and
+Race models load by default; choose full cockpit detail in the garage for the larger models. All four complete high-detail model chunk sets are listed in `mediumParts` and
 verified by the publishing tests. If a chunk is temporarily unavailable,
 the game falls back to that car's bundled race model.
 

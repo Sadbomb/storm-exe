@@ -1,15 +1,22 @@
 // Racing audio: the supplied exterior recordings are one-shot event sounds.
 // Engine RPM comes from a separate harmonic synthesizer, never a pass-by loop.
+import {getCarTuning} from './vehicle-tuning.js';
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const finite=(n,fallback=0)=>Number.isFinite(n)?n:fallback;
 const RATIOS=[3.05,2.15,1.62,1.29,1.05,.88];
+export const ENGINE_SOUNDS=Object.freeze({
+ Porsche992:Object.freeze({pulses:3,brightness:1.06,bass:.29,odd:.88,even:.47}),
+ Mercedes2005:Object.freeze({pulses:4,brightness:.75,bass:.53,odd:.64,even:.63}),
+ Mercedes2018:Object.freeze({pulses:4,brightness:.88,bass:.46,odd:.8,even:.51}),
+ MercedesGT3:Object.freeze({pulses:4,brightness:1.15,bass:.4,odd:.94,even:.7})
+});
 
 export class StormAudio {
  constructor(){
-  this.enabled=true;this.ctx=null;this.ready=false;this.buffers=[];this.master=null;
+  this.enabled=true;this.ctx=null;this.ready=false;this.buffers=[];this.master=null;this.volume=.8;this.wetness=1;this.carId='Porsche992';
   this.gear=1;this.rpm=1150;this.paused=false;this.focused=true;this.voices=new Set();
   this.persistent=[];this._loadPromise=null;this._targets=new WeakMap();this._epoch=0;
-  this._lastShift=-10;this._lastPass=-10;this._lastImpact=-10;this._lastThunder=-10;
+  this._lastShift=-10;this._lastPass=-10;this._lastImpact=-10;this._lastThunder=-10;this._lastCue={};this._finishVoice=null;
   this._visibility=()=>{this.focused=!document.hidden;this._syncMaster();if(!this.focused)this._stopVoices();};
   this._blur=()=>{this.focused=false;this._syncMaster();this._stopVoices();};
   this._focus=()=>{this.focused=!document.hidden;this._syncMaster();};
@@ -21,7 +28,7 @@ export class StormAudio {
 
  async start(){
   if(!this.ctx||this.ctx.state==='closed')this._createGraph();
-  this._epoch++;this._stopVoices();this.gear=1;this.rpm=1150;this.paused=false;
+  this._epoch++;this._stopVoices();this.gear=1;this.rpm=getCarTuning(this.carId).idleRpm;this.paused=false;this._lastCue={};
   this._lastShift=this.ctx.currentTime;this._shiftUntil=0;this._lastUpdate=this.ctx.currentTime;
   this.focused=typeof document==='undefined'||!document.hidden;
   await this.ctx.resume();this._syncMaster();
@@ -47,6 +54,9 @@ export class StormAudio {
   this.compressor.threshold.value=-17;this.compressor.knee.value=15;this.compressor.ratio.value=3;
   this.compressor.attack.value=.006;this.compressor.release.value=.2;
   this.master.connect(this.compressor);this.compressor.connect(c.destination);
+  // Results pause the driving bus immediately; the explicitly requested finish
+  // cue gets a separate bus so it can decay without keeping the engine audible.
+  this.finishMaster=c.createGain();this.finishMaster.gain.value=0;this.finishMaster.connect(this.compressor);this._finishVoice=null;
   this.noise=c.createBuffer(2,Math.floor(c.sampleRate*6),c.sampleRate);
   for(let channel=0;channel<2;channel++){
    const d=this.noise.getChannelData(channel);let low=0;
@@ -58,9 +68,7 @@ export class StormAudio {
   this.engineGain=c.createGain();this.engineGain.gain.value=0;
   this.engineFilter=c.createBiquadFilter();this.engineFilter.type='lowpass';this.engineFilter.Q.value=.65;
   this.engineFilter.frequency.value=1200;this.engineFilter.connect(this.engineGain);this.engineGain.connect(this.master);
-  const real=new Float32Array(17),imag=new Float32Array(17);
-  for(let i=1;i<imag.length;i++)imag[i]=(i%2?.9:.53)/Math.pow(i,.85);
-  this.tone=c.createOscillator();this.tone.setPeriodicWave(c.createPeriodicWave(real,imag));
+  this.tone=c.createOscillator();this._setEngineWave();
   this.tone.frequency.value=57.5;this.tone.connect(this.engineFilter);this.tone.start();this.persistent.push(this.tone);
   this.bass=c.createOscillator();this.bass.type='triangle';this.bass.frequency.value=19.2;
   this.bassGain=c.createGain();this.bassGain.gain.value=.35;this.bass.connect(this.bassGain);this.bassGain.connect(this.engineFilter);
@@ -69,7 +77,22 @@ export class StormAudio {
   this.wind=this._noiseBed(0,[['highpass',65,.45],['lowpass',600,.5]],1.43);
   this.rolling=this._noiseBed(0,[['bandpass',950,.5]],2.78);
   this.intake=this._noiseBed(0,[['bandpass',1050,.7]],4.11);
+  this.scrub=this._noiseBed(0,[['highpass',600,.5],['bandpass',1650,1.6]],.73);
+  this.squeal=c.createOscillator();this.squeal.type='sine';this.squeal.frequency.value=1450;
+  this.squealGain=c.createGain();this.squealGain.gain.value=0;this.squeal.connect(this.squealGain);this.squealGain.connect(this.master);
+  this.squeal.start();this.persistent.push(this.squeal);
  }
+
+ _setEngineWave(){
+  if(!this.ctx||!this.tone)return;
+  const profile=ENGINE_SOUNDS[this.carId],real=new Float32Array(25),imag=new Float32Array(25);
+  for(let i=1;i<imag.length;i++)imag[i]=(i%2?profile.odd:profile.even)/Math.pow(i,.85);
+  this.tone.setPeriodicWave(this.ctx.createPeriodicWave(real,imag));
+ }
+
+ setCar(id){this.carId=Object.hasOwn(ENGINE_SOUNDS,id)?id:'Porsche992';this._setEngineWave();return this.carId;}
+ setVolume(value){this.volume=clamp(finite(Number(value),.8),0,1);this._syncMaster();if(this.volume===0)this._stopVoices();return this.volume;}
+ setWetness(value){this.wetness=clamp(finite(Number(value),1),0,1);return this.wetness;}
 
  _noiseBed(gain,filters,offset){
   const c=this.ctx,source=c.createBufferSource();source.buffer=this.noise;source.loop=true;
@@ -89,7 +112,11 @@ export class StormAudio {
   param.setTargetAtTime(value,t,Math.max(.005,seconds));this._targets.set(param,value);
  }
 
- _syncMaster(){this._smooth(this.master?.gain,this.enabled&&this.focused&&!this.paused?.58:0,.045);}
+ _syncMaster(){
+  const volume=this.enabled&&this.focused?.58*this.volume:0;
+  this._smooth(this.master?.gain,this.paused?0:volume,.045);
+  this._smooth(this.finishMaster?.gain,this._finishVoice&&!this._finishVoice.stopping?volume:0,.045);
+ }
 
  setEnabled(value){
   this.enabled=Boolean(value);if(this.ctx)this._syncMaster();if(!this.enabled)this._stopVoices();
@@ -97,30 +124,41 @@ export class StormAudio {
   if(button){button.textContent='声音 '+(this.enabled?'开':'关');button.setAttribute('aria-pressed',String(this.enabled));}
  }
 
- update(speed,throttle,paused){
+ update(speed,throttle,paused,telemetry={}){
   if(!this.ctx||this.ctx.state==='closed')return;
+  telemetry=telemetry||{};
   speed=clamp(Math.abs(finite(speed)),0,110);throttle=clamp(finite(Number(throttle)),0,1);
-  const c=this.ctx,t=c.currentTime,dt=clamp(t-(this._lastUpdate??t),1/240,.1);this._lastUpdate=t;
-  if(this.paused!==Boolean(paused)){this.paused=Boolean(paused);this._syncMaster();if(this.paused)this._stopVoices();}
-  const wheelRPM=speed/.34*60/(Math.PI*2),mechanicalRPM=wheelRPM*RATIOS[this.gear-1]*4.1;
-  if(!this.paused&&t-this._lastShift>.36){
+  const c=this.ctx,t=c.currentTime,dt=clamp(t-(this._lastUpdate??t),1/240,.1),profile=ENGINE_SOUNDS[this.carId],tuning=getCarTuning(this.carId);this._lastUpdate=t;
+  if(this.paused!==Boolean(paused)){this.paused=Boolean(paused);this._syncMaster();if(this.paused)this._stopVoices({preserveFinish:true});}
+  const physicalGear=Number.isInteger(telemetry.gear)&&telemetry.gear>=-1&&telemetry.gear<=6;
+  if(physicalGear&&telemetry.gear!==this.gear){this.gear=telemetry.gear;this._lastShift=t;this._shiftUntil=t+.115;}
+  const wheelRPM=speed/.34*60/(Math.PI*2),mechanicalRPM=wheelRPM*RATIOS[Math.max(0,this.gear-1)]*4.1;
+  if(!physicalGear&&!this.paused&&t-this._lastShift>.36){
    if(mechanicalRPM>7100&&this.gear<6){this.gear++;this._lastShift=t;this._shiftUntil=t+.13;}
    else if(mechanicalRPM<3300&&this.gear>1){this.gear--;this._lastShift=t;this._shiftUntil=t+.105;}
   }
-  const targetRPM=clamp(Math.max(1150+throttle*750,wheelRPM*RATIOS[this.gear-1]*4.1)+throttle*170,1100,8200);
+  const fallbackRPM=Math.max(tuning.idleRpm+throttle*750,wheelRPM*RATIOS[Math.max(0,this.gear-1)]*4.1)+throttle*170;
+  const targetRPM=clamp(finite(telemetry.rpm,fallbackRPM),tuning.idleRpm*.75,tuning.redline*1.08);
   this.rpm+=(targetRPM-this.rpm)*(1-Math.exp(-dt*13));
-  const shifted=t<(this._shiftUntil||0),load=.25+throttle*.75;
-  // A six-cylinder, four-stroke firing order gives three combustion pulses/rev.
-  this._smooth(this.tone.frequency,this.rpm/20,.035);this._smooth(this.bass.frequency,this.rpm/60,.035);
-  this._smooth(this.engineFilter.frequency,750+this.rpm*.32+load*1400,.075);
-  this._smooth(this.engineGain.gain,(.10+load*.17+this.rpm/8200*.08)*(shifted?.33:1),.026);
+  const shifted=t<(this._shiftUntil||0),load=.25+throttle*.75,torqueCut=telemetry.tcActive?.78:1;
+  // Firing pulses follow the actual gearbox/RPM, including reverse and shifts.
+  this._smooth(this.tone.frequency,this.rpm/60*profile.pulses,.035);this._smooth(this.bass.frequency,this.rpm/60,.035);
+  this._smooth(this.bassGain.gain,profile.bass,.08);
+  this._smooth(this.engineFilter.frequency,(750+this.rpm*.32+load*1400)*profile.brightness,.075);
+  this._smooth(this.engineGain.gain,(.10+load*.17+this.rpm/tuning.redline*.08)*(shifted?.33:1)*torqueCut,.026);
   this._smooth(this.intake.volume.gain,(.012+throttle*.05)*(shifted?.3:1),.055);
   this._smooth(this.intake.filters[0].frequency,700+this.rpm*.14,.1);
   this._smooth(this.wind.volume.gain,Math.pow(speed/85,1.65)*.21,.22);
   this._smooth(this.wind.filters[1].frequency,400+speed*14,.2);
-  this._smooth(this.rolling.volume.gain,clamp(speed/65,0,1)*.075,.2);
+  const wetness=clamp(finite(telemetry.wetness,this.wetness),0,1),brake=clamp(finite(telemetry.brake),0,1),slip=clamp(Math.abs(finite(telemetry.slip)),0,1);
+  const scrub=clamp((slip-.12)/.72,0,1)*clamp(speed/9,0,1),squeal=clamp((slip-.52)/.48,0,1);
+  this._smooth(this.scrub.volume.gain,scrub*(.07+brake*.07+wetness*.03),.06);
+  this._smooth(this.scrub.filters[1].frequency,1200+slip*900+speed*3,.08);
+  this._smooth(this.squealGain.gain,squeal*clamp(speed/15,0,1)*.035*(1-wetness*.6),.075);
+  this._smooth(this.squeal.frequency,1320+slip*280+speed*2,.06);
+  this._smooth(this.rolling.volume.gain,clamp(speed/65,0,1)*(.052+wetness*.038),.2);
   this._smooth(this.rolling.filters[0].frequency,700+speed*13,.16);
-  this._smooth(this.rain.volume.gain,(.125+clamp(speed/85,0,1)*.04)*(this.sheltered?.23:1),.3);
+  this._smooth(this.rain.volume.gain,wetness*(.125+clamp(speed/85,0,1)*.04)*(this.sheltered?.23:1),.3);
  }
 
  _findPass(buffer){
@@ -133,20 +171,38 @@ export class StormAudio {
   return {offset,duration};
  }
 
- _canPlay(){return this.ctx&&this.ctx.state!=='closed'&&this.enabled&&this.focused&&!this.paused;}
+ _canPlay(){return this.ctx&&this.ctx.state!=='closed'&&this.enabled&&this.volume>0&&this.focused&&!this.paused;}
 
- _voice(tag,duration,volume,pan=0){
+ cue(kind){return this._cue(kind);}
+
+ finish(){return this._cue('finish',true);}
+
+ _cue(kind,finish=false){
+  if(finish?!(this.ctx&&this.ctx.state!=='closed'&&this.enabled&&this.volume>0&&this.focused):!this._canPlay())return false;
+  const cues={countdown:{notes:[440],duration:.13,gain:.095},start:{notes:[660,990],duration:.34,gain:.12},checkpoint:{notes:[740,988],duration:.18,gain:.065},finish:{notes:[523.25,659.25,783.99,1046.5],duration:.82,gain:.10}},cue=cues[kind];
+  if(!cue)return false;
+  const t=this.ctx.currentTime;if(t-(this._lastCue[kind]??-10)<.1)return false;this._lastCue[kind]=t;
+  if(finish&&this._finishVoice)this._stopVoice(this._finishVoice,.02,true);
+  const voice=this._voice('cue-'+kind,cue.duration,cue.gain,0,finish?this.finishMaster:this.master),osc=this.ctx.createOscillator();osc.type='sine';
+  if(finish){this._finishVoice=voice;this._syncMaster();}
+  voice.gain.gain.cancelScheduledValues(t);voice.gain.gain.setValueAtTime(0,t);
+  const beat=cue.duration/cue.notes.length;
+  cue.notes.forEach((frequency,index)=>{const at=t+index*beat;osc.frequency.setValueAtTime(frequency,at);voice.gain.gain.setValueAtTime(0,at);voice.gain.gain.linearRampToValueAtTime(cue.gain,at+.012);voice.gain.gain.linearRampToValueAtTime(0,at+beat*.95);});
+  osc.connect(voice.gain);this._attachSource(voice,osc);osc.stop(voice.until+.01);return true;
+ }
+
+ _voice(tag,duration,volume,pan=0,output=this.master){
   const c=this.ctx,t=c.currentTime;
   while(this.voices.size>=8)this._stopVoice(this.voices.values().next().value,0.015,true);
   const gain=c.createGain();gain.gain.setValueAtTime(0,t);
   gain.gain.linearRampToValueAtTime(volume,t+Math.min(.075,duration*.2));
   gain.gain.setValueAtTime(volume,t+Math.max(.08,duration*.6));gain.gain.linearRampToValueAtTime(0,t+duration);
-  let panner=null;if(c.createStereoPanner){panner=c.createStereoPanner();panner.pan.value=clamp(pan,-1,1);gain.connect(panner);panner.connect(this.master);}else gain.connect(this.master);
+  let panner=null;if(c.createStereoPanner){panner=c.createStereoPanner();panner.pan.value=clamp(pan,-1,1);gain.connect(panner);panner.connect(output);}else gain.connect(output);
   const voice={tag,gain,panner,sources:[],nodes:[],until:t+duration,stopping:false};this.voices.add(voice);return voice;
  }
 
  _attachSource(voice,source,offset=0,duration){
-  voice.sources.push(source);source.onended=()=>{source.disconnect();voice.sources=voice.sources.filter(s=>s!==source);if(!voice.sources.length){voice.gain.disconnect();voice.panner?.disconnect();for(const n of voice.nodes)n.disconnect();this.voices.delete(voice);}};
+  voice.sources.push(source);source.onended=()=>{source.disconnect();voice.sources=voice.sources.filter(s=>s!==source);if(!voice.sources.length){voice.gain.disconnect();voice.panner?.disconnect();for(const n of voice.nodes)n.disconnect();this.voices.delete(voice);if(this._finishVoice===voice){this._finishVoice=null;this._syncMaster();}}};
   if(source.buffer)source.start(this.ctx.currentTime,offset,duration);else source.start(this.ctx.currentTime);
  }
 
@@ -156,7 +212,7 @@ export class StormAudio {
   for(const source of voice.sources){try{source.stop(this.ctx.currentTime+fade);}catch{}}
  }
 
- _stopVoices(){for(const v of [...this.voices])this._stopVoice(v);}
+ _stopVoices({preserveFinish=false}={}){for(const v of [...this.voices])if(!preserveFinish||v!==this._finishVoice)this._stopVoice(v);}
 
  play(index,gain=.18){
   if(!this._canPlay()||!this.buffers[index])return;

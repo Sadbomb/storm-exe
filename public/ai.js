@@ -1,6 +1,13 @@
 import {clamp,angle,makeCar,drive,Lap,steeringLock} from './driving.js';
 
 export const CAR_IDS=['Porsche992','Mercedes2005','Mercedes2018','MercedesGT3'];
+// Difficulty changes the driver's decisions, never the car's physics or position.
+export const AI_DIFFICULTIES=Object.freeze({
+ club:Object.freeze({pace:.83,cornerGrip:8.3,brakePreview:7.5,headway:1.05,overtakeHold:2.2}),
+ pro:Object.freeze({pace:.94,cornerGrip:9.4,brakePreview:8.1,headway:.78,overtakeHold:1.75}),
+ elite:Object.freeze({pace:1,cornerGrip:10.3,brakePreview:8.7,headway:.6,overtakeHold:1.4})
+});
+const finite=(value,fallback=0)=>Number.isFinite(value)?value:fallback;
 const modulo=(v,n)=>(v%n+n)%n;
 const squared=(a,b)=>(a.x-b.x)**2+(a.z-b.z)**2+((a.y-b.y)*.5)**2;
 
@@ -41,47 +48,74 @@ export class RaceRoute {
 
 /** Same inputs, acceleration, grip and collision system as the player's car. */
 export class RivalRace {
- constructor({route,gates,road,playerId='Porsche992',spawn,collision=null,carDimensions={}}){
-  this.route=route instanceof RaceRoute?route:new RaceRoute(route);this.gates=gates;this.road=road;this.spawn=spawn;this.collision=collision;this.carDimensions=carDimensions;this.reset(playerId);
+ constructor({route,gates,road,playerId='Porsche992',spawn,collision=null,carDimensions={},difficulty='pro',wetness=1}){
+  this.route=route instanceof RaceRoute?route:new RaceRoute(route);this.gates=gates;this.road=road;this.spawn=spawn;this.collision=collision;this.carDimensions=carDimensions;this.setDifficulty(difficulty);this.setWetness(wetness);this.reset(playerId);
  }
+ setDifficulty(name){this.difficulty=Object.hasOwn(AI_DIFFICULTIES,name)?name:'pro';return this.difficulty;}
+ setWetness(value){this.wetness=clamp(finite(Number(value),1),0,1);for(const racer of this.racers||[])racer.state.wetness=this.wetness;return this.wetness;}
  reset(playerId=this.playerId){
   this.playerId=playerId;this.time=0;this.playerFinishTime=null;this.pendingStep=null;
   this.racers=CAR_IDS.filter(id=>id!==playerId).map((id,i)=>{
    const g=this.gates[0],back=22+i*7,lane=(i%2?1:-1)*1.55,x=g.x-g.fx*back-g.fz*lane,z=g.z-g.fz*back+g.fx*lane,y=this.road.sample(x,z,g.y)??g.y;
-   const state=makeCar({x,y,z,yaw:Math.atan2(g.fz,g.fx),dimensions:this.carDimensions[id]||{halfLength:2.48,halfWidth:1.04,height:1.3}}),projection=this.route.project(state,0,60);
-   return {id,state,lap:new Lap(this.gates),index:i,routeS:projection.s,lane,desiredLane:lane,stalled:0,recoveries:0,finished:false,finishTime:null,elapsed:0,input:{throttle:0,brake:0,steer:0},topSpeed:[66,64,63][i],cornerGrip:[11.8,11.4,11.0][i],targetSpeed:0};
+   const state=makeCar({x,y,z,yaw:Math.atan2(g.fz,g.fx),carId:id,wetness:this.wetness,dimensions:this.carDimensions[id]||{halfLength:2.48,halfWidth:1.04,height:1.3}}),projection=this.route.project(state,0,60);
+   return {id,state,lap:new Lap(this.gates),index:i,routeS:projection.s,lane,desiredLane:lane,laneHold:0,stalled:0,recoveries:0,finished:false,finishTime:null,elapsed:0,input:{throttle:0,brake:0,steer:0},topSpeed:[67,66,65][i],targetSpeed:0};
   });
  }
- recover(racer){
+ recover(racer,reason='stuck'){
   const lap=racer.lap,previous=lap.next===0?this.gates.length-1:lap.next-1,s=lap.started?this.route.gateDistances[previous]+6:-22-racer.index*7,p=this.route.at(s);
   const y=this.road.sample(p.x,p.z,p.y)??p.y;
-  Object.assign(racer.state,makeCar({x:p.x,y,z:p.z,yaw:Math.atan2(p.fz,p.fx),dimensions:racer.state.dimensions}));racer.routeS=s;racer.lane=0;racer.desiredLane=0;racer.stalled=0;racer.recoveries++;racer.recoveryFlash=1.2;
+  Object.assign(racer.state,makeCar({x:p.x,y,z:p.z,yaw:Math.atan2(p.fz,p.fx),carId:racer.id,wetness:this.wetness,dimensions:racer.state.dimensions}));racer.routeS=s;racer.lane=0;racer.desiredLane=0;racer.laneHold=0;racer.stalled=0;racer.recoveries++;racer.recoveryFlash=1.2;racer.recoveryReason=reason;
  }
  controls(racer,traffic,dt){
-  const s=racer.state,v=Math.max(0,s.speed),route=this.route,projection=route.project(s,racer.routeS,55);racer.routeS=projection.s;
-  const curve=route.curvature(projection.s+12),here=route.at(projection.s),laneLimit=Math.max(0,Math.min(2.25,here.width-1.55,route.at(projection.s+30).width-1.55));
-  let desired=(racer.index-1)*.35,blocked=null;
+  dt=clamp(finite(dt,1/120),0,.1);traffic=traffic||[];
+  const s=racer.state,v=Math.max(0,finite(s.speed)),route=this.route,profile=AI_DIFFICULTIES[this.difficulty]||AI_DIFFICULTIES.pro;
+  const projection=route.project(s,finite(racer.routeS),Math.max(55,v*1.5));racer.routeS=projection.s;
+  const curve=route.curvature(projection.s+12),here=route.at(projection.s),halfWidth=s.dimensions?.halfWidth||1.04;
+  const laneLimit=Math.max(0,Math.min(2.65,here.width-halfWidth-.5,route.at(projection.s+30).width-halfWidth-.5));
+  const lateral=(s.x-here.x)*-here.fz+(s.z-here.z)*here.fx,nearby=[];
+  let blocked=null;
   for(const other of traffic){
-   if(other===s||Math.abs(other.y-s.y)>3)continue;
-   const dx=other.x-s.x,dz=other.z-s.z,ahead=dx*projection.fx+dz*projection.fz,lateral=-dx*projection.fz+dz*projection.fx;
-   if(ahead>0&&ahead<38+v*.25&&Math.abs(lateral)<2.4&&(!blocked||ahead<blocked.ahead))blocked={state:other,ahead,lateral};
+   if(other===s||Math.abs(other.y-s.y)>3||Math.hypot(other.x-s.x,other.z-s.z)>100)continue;
+   const p=route.project(other,projection.s,100),ahead=p.s-projection.s;
+   // Project onto the route to avoid braking for cars on the opposite hairpin.
+   const otherLane=(other.x-p.x)*-p.fz+(other.z-p.z)*p.fx,clearance=halfWidth+(other.dimensions?.halfWidth||1.04)+.45;
+   if(p.error>here.width+2)continue;
+   const info={state:other,ahead,lane:otherLane,clearance,speed:Math.max(0,finite(other.speed))};nearby.push(info);
+   if(ahead>0&&ahead<Math.max(42,v*1.6)&&Math.abs(otherLane-lateral)<clearance&&(!blocked||ahead<blocked.ahead))blocked=info;
   }
-  if(blocked&&laneLimit>1.2){
-   const left=-laneLimit,right=laneLimit;
-   const free=lane=>traffic.every(other=>{if(other===s||Math.abs(other.y-s.y)>3)return true;const dx=other.x-here.x,dz=other.z-here.z,ahead=dx*here.fx+dz*here.fz,lateral=-dx*here.fz+dz*here.fx;return ahead< -8||ahead>42||Math.abs(lateral-lane)>=2.18;});
-   const preferred=racer.desiredLane<0?left:right;
+  racer.lane=finite(racer.lane,lateral);racer.desiredLane=finite(racer.desiredLane,racer.lane);racer.laneHold=Math.max(0,finite(racer.laneHold)-dt);
+  const free=lane=>nearby.every(other=>{
+   const rearGap=7+Math.max(0,other.speed-v)*1.5,frontGap=12+v*.6;
+   if(other.ahead< -rearGap||other.ahead>frontGap)return true;
+   // Check the whole merge path for vehicles alongside or closing from behind.
+   const low=Math.min(lateral,lane)-other.clearance,high=Math.max(lateral,lane)+other.clearance;
+   return other.ahead>8?Math.abs(other.lane-lane)>=other.clearance:other.lane<low||other.lane>high;
+  });
+  const apex=clamp(curve*28,-.7,.7),neutral=apex+(finite(racer.index,1)-1)*.12;
+  let desired=racer.laneHold>0?racer.desiredLane:neutral;
+  if(blocked&&laneLimit>1.2&&Math.abs(curve)<.035){
+   const preferred=racer.desiredLane<0?-laneLimit:laneLimit;
    if(free(preferred))desired=preferred;else if(free(-preferred))desired=-preferred;else desired=racer.lane;
-  }
-  if(Math.abs(curve)>.045)desired*=.25;
-  racer.desiredLane=clamp(desired,-laneLimit,laneLimit);racer.lane+=(racer.desiredLane-racer.lane)*(1-Math.exp(-1.6*dt));
-  const look=clamp(7+v*.3,8,25),target=route.at(projection.s+look),offset=clamp(racer.lane,-Math.max(0,target.width-1.45),Math.max(0,target.width-1.45));
-  const tx=target.x-target.fz*offset,tz=target.z+target.fx*offset,heading=Math.atan2(tz-(s.z+s.vz*.08),tx-(s.x+s.vx*.08)),alpha=angle(heading-s.yaw),distance=Math.hypot(tx-s.x,tz-s.z);
-  const wheelAngle=Math.atan2(2*2.8*Math.sin(alpha),Math.max(3,distance)),lock=steeringLock(v),steer=clamp(wheelAngle/lock,-1,1);
-  let targetSpeed=racer.topSpeed;
-  for(let d=0;d<=Math.max(90,v*v/15+30);d+=8){const k=Math.abs(route.curvature(projection.s+d));const cornerSpeed=Math.min(racer.topSpeed,Math.sqrt(racer.cornerGrip/Math.max(.001,k)));targetSpeed=Math.min(targetSpeed,Math.sqrt(cornerSpeed*cornerSpeed+2*7*Math.max(0,d-12)));}
+   if(Math.abs(desired-racer.desiredLane)>.5)racer.laneHold=profile.overtakeHold;
+  }else if(racer.laneHold===0&&!free(desired))desired=racer.lane;
+  racer.desiredLane=clamp(desired,-laneLimit,laneLimit);racer.lane+=clamp((racer.desiredLane-racer.lane)*1.6,-1.7,1.7)*dt;
+  const look=clamp(7+v*.3,8,25),target=route.at(projection.s+look),offset=clamp(racer.lane,-Math.max(0,target.width-halfWidth-.4),Math.max(0,target.width-halfWidth-.4));
+  const tx=target.x-target.fz*offset,tz=target.z+target.fx*offset,heading=Math.atan2(tz-(s.z+finite(s.vz)*.1),tx-(s.x+finite(s.vx)*.1)),alpha=angle(heading-s.yaw),distance=Math.hypot(tx-s.x,tz-s.z);
+  const wheelAngle=Math.atan2(2*(s.dimensions?.wheelbase||2.8)*Math.sin(alpha),Math.max(3,distance)),lock=steeringLock(v),steer=clamp(wheelAngle/lock,-1,1);
+  const wetGrip=1-clamp(finite(this.wetness,1),0,1)*.27,topSpeed=finite(racer.topSpeed,66)*profile.pace;
+  // The physical brakes reach 11–13 m/s²; preview reserves grip for steering,
+  // pedal ramp and wet roads instead of assuming maximum straight-line braking.
+  const grip=Math.min(finite(racer.cornerGrip,profile.cornerGrip),profile.cornerGrip)*wetGrip,decel=profile.brakePreview*wetGrip;
+  let targetSpeed=topSpeed;
+  for(let d=0;d<=Math.max(90,v*v/(2*decel)+35);d+=6){const k=Math.abs(route.curvature(projection.s+d));const cornerSpeed=Math.min(topSpeed,Math.sqrt(grip/Math.max(.001,k)));targetSpeed=Math.min(targetSpeed,Math.sqrt(cornerSpeed*cornerSpeed+2*decel*Math.max(0,d-14)));}
   if(Math.abs(alpha)>.4)targetSpeed=Math.min(targetSpeed,Math.max(9,20/Math.abs(alpha)));
   if(projection.error>3.5)targetSpeed=Math.min(targetSpeed,16);
-  if(blocked){const clearance=Math.abs(blocked.lateral);if(clearance<2.12||blocked.ahead<8)targetSpeed=Math.min(targetSpeed,Math.max(0,blocked.state.speed+(blocked.ahead-7-v*.2)*.55));}
+  if(blocked&&Math.abs(blocked.lane-lateral)<blocked.clearance){
+   const length=(s.dimensions?.halfLength||2.4)+(blocked.state.dimensions?.halfLength||2.4),gap=Math.max(0,blocked.ahead-length),closing=Math.max(0,v-blocked.speed);
+   const safeGap=2.5+v*profile.headway+closing*closing/(2*decel);
+   targetSpeed=Math.min(targetSpeed,Math.max(0,blocked.speed+(gap-safeGap)*.7));
+   if(gap<3||closing>0&&gap/closing<.75)targetSpeed=0;
+  }
   racer.targetSpeed=targetSpeed;
   return {steer,throttle:v<targetSpeed+.3?clamp((targetSpeed-v)*.5,0,1):0,brake:v>targetSpeed+.5?clamp((v-targetSpeed)*.35,0,1):0,handbrake:false,canReverse:false};
  }
@@ -96,6 +130,7 @@ export class RivalRace {
   for(const racer of this.racers){
    racer.recoveryFlash=Math.max(0,(racer.recoveryFlash||0)-dt);
    if(racer.finished){racer.input={throttle:0,brake:1,steer:0,canReverse:false};if(Math.abs(racer.state.speed)>.05)drive(racer.state,racer.input,dt,this.road,this.collision);else{racer.state.speed=0;racer.state.vx=0;racer.state.vz=0;}continue;}
+   racer.state.wetness=this.wetness;
    const previous={x:racer.state.x,y:racer.state.y,z:racer.state.z};racer.input=this.controls(racer,traffic,dt);drive(racer.state,racer.input,dt,this.road,this.collision);racer.elapsed+=dt;
    pending.push({racer,previous});
   }
@@ -109,7 +144,11 @@ export class RivalRace {
    racer.lap.step(previous,racer.state,dt);
    if(racer.lap.finished){racer.finished=true;racer.finishTime=this.time;continue;}
    racer.stalled=Math.abs(racer.state.speed)<2&&racer.elapsed>5?racer.stalled+dt:0;
-   if(racer.state.offroad>1.1||racer.stalled>4.5)this.recover(racer);
+   const nextGate=!racer.lap.started?0:racer.lap.next===0?this.route.length:this.route.gateDistances[racer.lap.next];
+   // A collision can push a car around a timing gate. Return behind that gate,
+   // never let it circulate forever or award unearned checkpoint progress.
+   if(racer.routeS>nextGate+35)this.recover(racer,'missed-checkpoint');
+   else if(racer.state.offroad>1.1||racer.stalled>4.5)this.recover(racer);
   }
  }
  standings(playerState,playerLap){

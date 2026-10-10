@@ -1,49 +1,88 @@
 import * as THREE from 'three';
 import {clamp,steeringLock} from './driving.js';
+const finite=(value,fallback=0)=>Number.isFinite(value)?value:fallback;
 
 function softTexture(){const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'rgba(210,230,245,.8)');g.addColorStop(.25,'rgba(168,198,222,.4)');g.addColorStop(1,'rgba(120,170,210,0)');x.fillStyle=g;x.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);}
 
 export class WeatherFX {
- constructor(scene){this.scene=scene;this.time=0;this.cursor=0;this.sparkCursor=0;this.spawnCredit=0;this.lastImpact=0;this.emitters=[];this.quality='balanced';this.rainUniforms={uTime:{value:0},uOrigin:{value:new THREE.Vector3()},uVelocity:{value:new THREE.Vector3()}};
+ constructor(scene){this.scene=scene;this.time=0;this.cursor=0;this.sparkCursor=0;this.spawnCredit=0;this.lastImpact=0;this.emitters=[];this.sprayCredits=new WeakMap();this.quality='balanced';this.wetness=.75;this.sheltered=false;this.rainUniforms={uTime:{value:0},uWetness:{value:.75},uOrigin:{value:new THREE.Vector3()},uVelocity:{value:new THREE.Vector3()}};
   const n=1800,p=new Float32Array(n*6),seed=new Float32Array(n*6),head=new Float32Array(n*2);
   for(let i=0;i<n;i++){const x=(Math.random()-.5)*65,y=Math.random()*28,z=(Math.random()-.5)*65;for(let j=0;j<2;j++){seed.set([x,y,z],i*6+j*3);head[i*2+j]=j;}}
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));g.setAttribute('aSeed',new THREE.BufferAttribute(seed,3));g.setAttribute('aHead',new THREE.BufferAttribute(head,1));
-  const m=new THREE.ShaderMaterial({uniforms:this.rainUniforms,transparent:true,depthWrite:false,vertexShader:`attribute vec3 aSeed;attribute float aHead;uniform float uTime;uniform vec3 uOrigin;uniform vec3 uVelocity;varying float vAlpha;void main(){float fall=22.+abs(aSeed.x)*.28;vec3 p=aSeed;p.y=mod(aSeed.y-uTime*fall,28.);p+=uOrigin;p.x-=aHead*(.18+abs(uVelocity.x)*.006);p.z+=aHead*.12;p.y+=aHead*(.55+abs(aSeed.z)*.022);vec4 mv=modelViewMatrix*vec4(p,1.);vAlpha=smoothstep(1.4,6.,length(p.xz-uOrigin.xz))*.32;gl_Position=projectionMatrix*mv;}`,fragmentShader:`varying float vAlpha;void main(){gl_FragColor=vec4(.66,.79,.86,vAlpha);}`});
+  const m=new THREE.ShaderMaterial({uniforms:this.rainUniforms,transparent:true,depthWrite:false,vertexShader:`attribute vec3 aSeed;attribute float aHead;uniform float uTime;uniform vec3 uOrigin;uniform vec3 uVelocity;varying float vAlpha;void main(){float fall=22.+abs(aSeed.x)*.28;vec3 p=aSeed;p.y=mod(aSeed.y-uTime*fall,28.);p+=uOrigin;p.x-=aHead*(.18+abs(uVelocity.x)*.006);p.z+=aHead*.12;p.y+=aHead*(.55+abs(aSeed.z)*.022);vec4 mv=modelViewMatrix*vec4(p,1.);vAlpha=smoothstep(1.4,6.,length(p.xz-uOrigin.xz))*.32;gl_Position=projectionMatrix*mv;}`,fragmentShader:`varying float vAlpha;uniform float uWetness;void main(){gl_FragColor=vec4(.66,.79,.86,vAlpha*(.45+.55*uWetness));}`});
   this.rain=new THREE.LineSegments(g,m);this.rain.frustumCulled=false;scene.add(this.rain);
   this.particles=Array.from({length:480},()=>({age:100,life:1,x:0,y:-1000,z:0,vx:0,vy:0,vz:0}));const pg=new THREE.BufferGeometry();this.positions=new Float32Array(480*3);this.positions.fill(-1000);pg.setAttribute('position',new THREE.BufferAttribute(this.positions,3));this.spray=new THREE.Points(pg,new THREE.PointsMaterial({map:softTexture(),color:0x9abacc,transparent:true,opacity:.24,size:1.15,depthWrite:false}));this.spray.frustumCulled=false;scene.add(this.spray);
-  this.sparks=Array.from({length:64},()=>({age:100,life:.4,x:0,y:-1000,z:0,vx:0,vy:0,vz:0}));this.sparkPositions=new Float32Array(64*3);this.sparkPositions.fill(-1000);const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.BufferAttribute(this.sparkPositions,3));this.sparkMesh=new THREE.Points(sg,new THREE.PointsMaterial({color:0xffc76e,size:.085,depthWrite:false,transparent:true,opacity:.9,blending:THREE.AdditiveBlending}));this.sparkMesh.frustumCulled=false;scene.add(this.sparkMesh);
+  this.sparks=Array.from({length:64},()=>({age:100,life:.4,x:0,y:-1000,z:0,vx:0,vy:0,vz:0}));this.sparkPositions=new Float32Array(64*3);this.sparkPositions.fill(-1000);const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.BufferAttribute(this.sparkPositions,3));this.sparkMesh=new THREE.Points(sg,new THREE.PointsMaterial({color:0xffc76e,size:.085,depthWrite:false,transparent:true,opacity:.9,blending:THREE.AdditiveBlending}));this.sparkMesh.frustumCulled=false;scene.add(this.sparkMesh);this.setWetness(this.wetness);
  }
- setQuality(mode){this.quality=mode;this.rain.geometry.setDrawRange(0,mode==='high'?3600:2100);}
+ setQuality(mode){this.quality=mode==='high'?'high':'balanced';this.refreshRain();}
+ refreshRain(){const maximum=this.quality==='high'?1800:1050;this.rain.geometry.setDrawRange(0,Math.round(maximum*this.wetness)*2);this.rain.visible=this.wetness>.001&&!this.sheltered;}
+ setWetness(value){
+  this.wetness=clamp(Number.isFinite(value)?value:.75,0,1);this.rainUniforms.uWetness.value=this.wetness;this.refreshRain();
+  this.spray.visible=this.wetness>.001;this.spray.material.opacity=.12+.16*this.wetness;this.spray.material.size=.75+.55*this.wetness;
+  if(this.wetness<=.001){for(const particle of this.particles)particle.age=100;this.positions.fill(-1000);this.spray.geometry.attributes.position.needsUpdate=true;this.sprayCredits=new WeakMap();}
+ }
  impact(s,strength){if(this.time-this.lastImpact<.2||strength<2)return;this.lastImpact=this.time;const n=Math.min(20,Math.ceil(strength*2));for(let i=0;i<n;i++){const p=this.sparks[this.sparkCursor++%64];Object.assign(p,{x:s.x+Math.cos(s.yaw)*1.9,y:s.y+.45,z:s.z+Math.sin(s.yaw)*1.9,age:0,life:.18+Math.random()*.35,vx:-s.vx*.12+(Math.random()-.5)*5,vy:1+Math.random()*3,vz:-s.vz*.12+(Math.random()-.5)*5});}}
- update(dt,player,emitters,active=true,sheltered=false){this.rain.visible=!sheltered;this.time+=dt;this.rainUniforms.uTime.value=this.time;this.rainUniforms.uOrigin.value.set(player.x,player.y,player.z);this.rainUniforms.uVelocity.value.set(player.vx||0,0,player.vz||0);
-  if(active){for(let n=0;n<emitters.length;n++){const {state:s,wheels}=emitters[n],v=Math.abs(s.speed),distance=Math.hypot(s.x-player.x,s.z-player.z);if(v<4||distance>100)continue;const count=Math.min(12,Math.ceil(v*dt*(n===0?9:4)));for(let i=0;i<count;i++){const p=this.particles[this.cursor++%480],wheel=wheels?.[(this.cursor%2)?'BL':'BR']?.center_m||[-1.4,(this.cursor%2)?.8:-.8,.3],co=Math.cos(s.yaw),si=Math.sin(s.yaw);Object.assign(p,{x:s.x+co*wheel[0]+si*wheel[1],z:s.z+si*wheel[0]-co*wheel[1],y:s.y+.22,age:0,life:.24+Math.random()*.5,vx:-co*(1+v*.045)+(Math.random()-.5)*1.4,vz:-si*(1+v*.045)+(Math.random()-.5)*1.4,vy:.5+Math.random()*1.7});}}}
+ update(dt,player,emitters,active=true,sheltered=false){dt=clamp(Number.isFinite(dt)?dt:0,0,.1);this.sheltered=sheltered;this.rain.visible=this.wetness>.001&&!sheltered;this.time+=dt;this.rainUniforms.uTime.value=this.time;this.rainUniforms.uOrigin.value.set(player.x,player.y,player.z);this.rainUniforms.uVelocity.value.set(player.vx||0,0,player.vz||0);
+  if(active&&this.wetness>.001){for(let n=0;n<emitters.length;n++){
+   const {state:s,wheels}=emitters[n],v=Math.abs(s.speed),distance=Math.hypot(s.x-player.x,s.z-player.z);if(v<4||distance>100)continue;
+   // Fractional emission keeps drizzle light and removes the old one-particle
+   // minimum per frame, which doubled water spray at higher refresh rates.
+   const credit=Math.min(12,(this.sprayCredits.get(s)||0)+v*dt*(n===0?9:4)*Math.pow(this.wetness,1.25)*(this.quality==='high'?1:.7)),count=Math.floor(credit);
+   this.sprayCredits.set(s,credit-count);
+   for(let i=0;i<count;i++){const p=this.particles[this.cursor++%480],wheel=wheels?.[(this.cursor%2)?'BL':'BR']?.center_m||[-1.4,(this.cursor%2)?.8:-.8,.3],co=Math.cos(s.yaw),si=Math.sin(s.yaw);Object.assign(p,{x:s.x+co*wheel[0]+si*wheel[1],z:s.z+si*wheel[0]-co*wheel[1],y:s.y+.22,age:0,life:.24+Math.random()*.5,vx:-co*(1+v*.045)+(Math.random()-.5)*1.4,vz:-si*(1+v*.045)+(Math.random()-.5)*1.4,vy:.5+Math.random()*1.7});}
+  }}
   const groups=[[this.particles,this.positions,this.spray,2],[this.sparks,this.sparkPositions,this.sparkMesh,8]];for(const [particles,positions,mesh,gravity] of groups){for(let i=0;i<particles.length;i++){const p=particles[i];p.age+=dt;if(p.age>p.life){positions[i*3+1]=-1000;continue;}p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;p.vy-=gravity*dt;positions[i*3]=p.x;positions[i*3+1]=p.y;positions[i*3+2]=p.z;}mesh.geometry.attributes.position.needsUpdate=true;}
  }
 }
 
 export class CockpitGlass {
- constructor(canvas){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.enabled=true;this.visible=false;this.shape=[[.27,.15],[.99,.14],[.99,.53],[.32,.53]];this.phase=0;this.dt=0;this.drops=Array.from({length:120},()=>({x:Math.random(),y:Math.random()*.76,size:1+Math.random()*2,age:Math.random()*5}));this.resize();}
+ constructor(canvas){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.enabled=true;this.visible=false;this.wetness=.75;this.shape=[[.27,.15],[.99,.14],[.99,.53],[.32,.53]];this.phase=0;this.dt=0;this.drops=Array.from({length:120},()=>({x:Math.random(),y:Math.random()*.76,size:1+Math.random()*2,age:Math.random()*5}));this.resize();}
  setCar(id){const shapes={Porsche992:[[.27,.15],[.99,.14],[.99,.53],[.32,.53]],Mercedes2005:[[.24,.14],[.99,.12],[.99,.58],[.28,.57]],Mercedes2018:[[.25,.13],[.99,.14],[.99,.57],[.30,.56]],MercedesGT3:[[.26,.16],[.99,.14],[.99,.57],[.30,.55]]};this.shape=shapes[id]||shapes.Porsche992;}
+ setWetness(value){this.wetness=clamp(Number.isFinite(value)?value:.75,0,1);if(this.wetness<=.001){this.phase=0;this.dt=0;for(const drop of this.drops)drop.age=8;this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);}this.canvas.hidden=!this.visible||this.wetness<=.001;}
  resize(){this.canvas.width=Math.round(innerWidth);this.canvas.height=Math.round(innerHeight);}
- update(dt,speed,visible,sheltered=false){this.visible=visible;this.canvas.hidden=!visible;if(!visible)return;this.dt+=dt;if(this.dt<1/30)return;dt=this.dt;this.dt=0;this.phase+=dt*(1.7+Math.min(speed/70,.35));const c=this.ctx,w=this.canvas.width,h=this.canvas.height; c.clearRect(0,0,w,h);c.save();c.beginPath();for(let i=0;i<this.shape.length;i++){const [x,y]=this.shape[i];i?c.lineTo(x*w,y*h):c.moveTo(x*w,y*h);}c.closePath();c.clip();
-  const sweep=-1.66+Math.cos(this.phase*Math.PI*2)*.86,bottom=this.shape[2][1],pivots=[[.43,bottom],[.79,bottom]],radius=h*.43;
-  for(const d of this.drops){d.age+=dt;d.y+=dt*(.018+speed*.0005);d.x+=dt*.005;if(d.y>.87||d.age>7){if(sheltered)continue;d.x=Math.random();d.y=Math.random()*.68;d.age=0;}let cleared=false;if(this.enabled)for(const [px,py] of pivots){const x=d.x*w-px*w,y=d.y*h-py*h,a=Math.atan2(y,x);if(Math.hypot(x,y)<radius&&Math.abs(a-sweep)<.095){d.age=8;cleared=true;break;}}if(cleared)continue;const x=d.x*w,y=d.y*h,alpha=.12+Math.min(d.age*.04,.2);c.strokeStyle=`rgba(185,216,233,${alpha})`;c.lineWidth=d.size*.55;c.beginPath();c.ellipse(x,y,d.size,d.size*2.4,-.08,0,Math.PI*2);c.stroke();c.strokeStyle=`rgba(15,34,48,${alpha*.4})`;c.beginPath();c.moveTo(x+.7,y+2);c.lineTo(x+1.5,y+10+speed*.1);c.stroke();}
+ update(dt,speed,visible,sheltered=false){
+  this.visible=visible;this.canvas.hidden=!visible||this.wetness<=.001;if(this.canvas.hidden)return;
+  this.dt+=clamp(Number.isFinite(dt)?dt:0,0,.1);if(this.dt<1/30)return;dt=this.dt;this.dt=0;
+  speed=Math.abs(Number.isFinite(speed)?speed:0);
+  const c=this.ctx,w=this.canvas.width,h=this.canvas.height,count=Math.ceil(this.drops.length*this.wetness),residual=this.drops.slice(0,count).some(d=>d.age<=7),wiping=this.enabled&&(!sheltered||residual);
+  if(wiping)this.phase+=dt*(.72+this.wetness*1.08+Math.min(speed/110,.3));else this.phase=0;
+  // Drizzle gets an intermittent parked phase; downpour gets continuous sweeps.
+  const cycle=this.phase%1,pause=this.wetness<.6?.48:0,sweepPhase=cycle<pause?0:(cycle-pause)/(1-pause),sweep=-1.66-Math.cos(sweepPhase*Math.PI*2)*.86;
+  c.clearRect(0,0,w,h);c.save();c.beginPath();for(let i=0;i<this.shape.length;i++){const [x,y]=this.shape[i];i?c.lineTo(x*w,y*h):c.moveTo(x*w,y*h);}c.closePath();c.clip();
+  const bottom=this.shape[2][1],pivots=[[.43,bottom],[.79,bottom]],radius=h*.43;
+  for(let i=0;i<count;i++){
+   const d=this.drops[i];d.age+=dt;d.y+=dt*(.018+speed*.0005);d.x+=dt*.005;
+   if(d.y>.87||d.age>7){if(sheltered)continue;d.x=Math.random();d.y=Math.random()*.68;d.age=0;}
+   let cleared=false;if(wiping)for(const [px,py] of pivots){const x=d.x*w-px*w,y=d.y*h-py*h,a=Math.atan2(y,x);if(Math.hypot(x,y)<radius&&Math.abs(a-sweep)<.095){d.age=8;cleared=true;break;}}
+   if(cleared)continue;const x=d.x*w,y=d.y*h,alpha=(.12+Math.min(d.age*.04,.2))*(.65+.35*this.wetness);c.strokeStyle=`rgba(185,216,233,${alpha})`;c.lineWidth=d.size*.55;c.beginPath();c.ellipse(x,y,d.size,d.size*2.4,-.08,0,Math.PI*2);c.stroke();c.strokeStyle=`rgba(15,34,48,${alpha*.4})`;c.beginPath();c.moveTo(x+.7,y+2);c.lineTo(x+1.5,y+10+speed*.1);c.stroke();
+  }
   if(this.enabled)for(const [px,py] of pivots){const x=px*w,y=py*h,ex=x+Math.cos(sweep)*radius,ey=y+Math.sin(sweep)*radius;c.strokeStyle='rgba(4,10,15,.95)';c.lineWidth=4;c.lineCap='round';c.beginPath();c.moveTo(x,y);c.lineTo(ex,ey);c.stroke();c.strokeStyle='rgba(127,147,161,.6)';c.lineWidth=1;c.stroke();}
   c.restore();
  }
 }
 
 export class VehicleVisual {
- constructor(root,spec={}){this.root=root;this.spec=spec;this.wheels=[];this.glass=[];this.brakes=[];this.steering=[];this.pitch=0;this.roll=0;this.previousSpeed=0;this.gear=0;this.gearKick=0;
-  root.traverse(o=>{if(/^Wheel_(FL|FR|BL|BR)$/.test(o.name))this.wheels.push({o,base:o.quaternion.clone(),position:o.position.clone(),front:o.name.startsWith('Wheel_F'),phase:0});if(o.name==='SteeringWheel')this.steering.push({o,base:o.quaternion.clone()});for(const m of [].concat(o.material||[])){const name=m.name.toLowerCase();if((/window|windshield/.test(name)&&!/frame|sticker|decal/.test(name)||name==='int_banner'||name==='ext_banner')&&!this.glass.some(x=>x.m===m))this.glass.push({m,opacity:m.opacity,transparent:m.transparent,depthWrite:m.depthWrite});if(/rear|brake|tail/.test(name)&&/light|emiss/.test(name)&&!this.brakes.some(x=>x.m===m))this.brakes.push({m,emissive:m.emissive?.clone(),intensity:m.emissiveIntensity||0});}});
+ constructor(root,spec={}){this.root=root;this.spec=spec;this.wheels=[];this.glass=[];this.brakes=[];this.steering=[];this.pitch=0;this.roll=0;this.previousSpeed=0;this.gear=0;this.gearKick=0;this.cockpitActive=null;
+  root.traverse(o=>{if(/^Wheel_(FL|FR|BL|BR)$/.test(o.name))this.wheels.push({o,base:o.quaternion.clone(),position:o.position.clone(),front:o.name.startsWith('Wheel_F'),phase:0});if(o.name==='SteeringWheel')this.steering.push({o,base:o.quaternion.clone()});for(const m of [].concat(o.material||[])){const name=(m.name||'').toLowerCase();if((/window|windshield/.test(name)&&!/frame|sticker|decal/.test(name)||name==='int_banner'||name==='ext_banner')&&!this.glass.some(x=>x.m===m))this.glass.push({m,opacity:m.opacity,transparent:m.transparent,depthWrite:m.depthWrite});if(/rear|brake|tail/.test(name)&&/light|emiss/.test(name)&&!this.brakes.some(x=>x.m===m))this.brakes.push({m,emissive:m.emissive?.clone(),intensity:m.emissiveIntensity||0});}});
   // Older high-detail Porsche exports retain the steering submeshes separately.
   if(!this.steering.length){const parts=[];root.traverse(o=>{if(o.isMesh&&/steer_hr/i.test(o.name))parts.push(o);});if(parts.length){root.updateMatrixWorld(true);const box=new THREE.Box3();for(const o of parts)box.expandByObject(o);const pivot=new THREE.Group();pivot.name='AnimatedSteering';pivot.position.copy(root.worldToLocal(box.getCenter(new THREE.Vector3())));root.add(pivot);root.updateMatrixWorld(true);for(const p of parts)pivot.attach(p);this.steering.push({o:pivot,base:pivot.quaternion.clone()});}}
  }
- reset(s={}){this.pitch=s.pitch||0;this.roll=-(s.roll||0);this.previousSpeed=s.speed||0;this.gearKick=0;for(const w of this.wheels){w.phase=0;w.o.quaternion.copy(w.base);}for(const w of this.steering)w.o.quaternion.copy(w.base);this.root.rotation.x=this.roll;this.root.rotation.z=this.pitch;}
- cockpit(on){const sunstrip=this.root.getObjectByName('CockpitSunstrip');if(sunstrip)sunstrip.visible=!on;for(const {m,opacity,transparent,depthWrite} of this.glass){m.opacity=on?.025:opacity;m.transparent=on||transparent;m.depthWrite=on?false:depthWrite;m.needsUpdate=true;}}
- update(s,dt,brake=0,road){const speed=Math.abs(s.speed),gear=Math.min(6,1+Math.floor(speed*3.6/46));if(gear!==this.gear){this.gearKick=.008;this.gear=gear;}this.gearKick*=Math.exp(-16*dt);const accel=(s.speed-this.previousSpeed)/Math.max(dt,.001);this.previousSpeed=s.speed;const targetPitch=(s.pitch||0)+clamp(accel*.0006,-.012,.012)+this.gearKick,targetRoll=-(s.roll||0)-s.steer*clamp(speed/40,0,1)*.018;this.pitch+=(targetPitch-this.pitch)*(1-Math.exp(-14*dt));this.roll+=(targetRoll-this.roll)*(1-Math.exp(-10*dt));this.root.rotation.z=this.pitch;this.root.rotation.x=this.roll;
-  for(const w of this.wheels){const key=w.o.name.split('_')[1],radius=(this.spec.wheels?.[key]?.radius_cm||33)/100;w.phase=(w.phase-s.speed/radius*dt)%(Math.PI*2);w.o.quaternion.copy(w.base);if(w.front)w.o.rotateY(-s.steer*steeringLock(s.speed));w.o.rotateZ(w.phase);}
-  for(const w of this.steering){w.o.quaternion.copy(w.base);w.o.rotateX(s.steer*1.5);}
-  for(const {m,emissive,intensity} of this.brakes){if(m.emissive){m.emissive.copy(emissive);if(brake)m.emissive.setRGB(.8,.015,.01);m.emissiveIntensity=brake?1.2:Math.max(.25,intensity);}}
+ reset(s={}){s=s||{};this.pitch=finite(s.pitch);this.roll=-finite(s.roll);this.previousSpeed=finite(s.speed);this.gear=finite(s.gear);this.gearKick=0;for(const w of this.wheels){w.phase=0;w.o.quaternion.copy(w.base);}for(const w of this.steering)w.o.quaternion.copy(w.base);this.root.rotation.x=this.roll;this.root.rotation.z=this.pitch;}
+ cockpit(on){on=Boolean(on);if(this.cockpitActive===on)return;this.cockpitActive=on;const sunstrip=this.root.getObjectByName('CockpitSunstrip');if(sunstrip)sunstrip.visible=!on;for(const {m,opacity,transparent,depthWrite} of this.glass){m.opacity=on?.025:opacity;m.transparent=on||transparent;m.depthWrite=on?false:depthWrite;m.needsUpdate=true;}}
+ update(s={},dt=0,brake=0,road){
+  // Replay/ghost poses only contain position, heading and speed. Treat optional
+  // telemetry as absent rather than allowing one NaN to poison every transform.
+  s=s||{};dt=clamp(finite(dt),0,.1);const velocity=finite(s.speed),speed=Math.abs(velocity),steer=finite(s.steer),gear=Number.isFinite(s.gear)?s.gear:velocity<-.05?-1:speed<.05?0:Math.min(6,1+Math.floor(speed*3.6/46));
+  if(gear!==this.gear){if(gear>0&&this.gear>0)this.gearKick=gear>this.gear?-.010:.006;this.gear=gear;}this.gearKick=finite(this.gearKick)*Math.exp(-14*dt);
+  const accel=(velocity-finite(this.previousSpeed))/Math.max(dt,.001);this.previousSpeed=velocity;
+  const longitudinal=Number.isFinite(s.longitudinalG)?s.longitudinalG:accel/9.81,lateral=Number.isFinite(s.lateralG)?s.lateralG:steer*clamp(speed/40,0,1)*.5;
+  const targetPitch=finite(s.pitch)+clamp(longitudinal*.026,-.045,.04)+this.gearKick,targetRoll=-finite(s.roll)-clamp(lateral*.032,-.045,.045);
+  this.pitch=finite(this.pitch)+(targetPitch-finite(this.pitch))*(1-Math.exp(-9*dt));this.roll=finite(this.roll)+(targetRoll-finite(this.roll))*(1-Math.exp(-7*dt));this.root.rotation.z=this.pitch;this.root.rotation.x=this.roll;
+  const wheelAngle=Number.isFinite(s.steerAngle)?s.steerAngle:steer*steeringLock(velocity);
+  for(const w of this.wheels){const key=w.o.name.split('_')[1],radiusCm=finite(this.spec.wheels?.[key]?.radius_cm,33),radius=radiusCm>0?radiusCm/100:.33;w.phase=(finite(w.phase)-velocity/radius*dt)%(Math.PI*2);w.o.quaternion.copy(w.base);if(w.front)w.o.rotateY(-wheelAngle);w.o.rotateZ(w.phase);}
+  for(const w of this.steering){w.o.quaternion.copy(w.base);w.o.rotateX(clamp(wheelAngle*7.5,-2.6,2.6));}
+  const brakeLevel=gear<0?0:Math.max(finite(brake),finite(s.brake)),braking=brakeLevel>.03;
+  for(const {m,emissive,intensity} of this.brakes){if(m.emissive){m.emissive.copy(emissive);if(braking)m.emissive.setRGB(.8,.015,.01);m.emissiveIntensity=braking?1.2:Math.max(.25,finite(intensity));}}
+
  }
 }
